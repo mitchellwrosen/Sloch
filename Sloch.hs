@@ -7,9 +7,12 @@ import Debug.Trace
 import ByteStringUtils
 import LangInfo
 
+import Control.Applicative ((<*>), pure)
 import Control.Lens ((.=), (%=), (^.), makeLenses, set, use, uses)
+import Control.Monad (when)
 import Control.Monad.State
 import Data.List (intercalate)
+import Data.Maybe (fromJust, isJust)
 import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
 import System.Environment (getArgs)
@@ -35,7 +38,7 @@ makeLenses ''FileState
 
 -- initFileState contents
 --
--- Creates a FileState from a file as a ByteString
+-- Creates a FileState from a file as a ByteString.
 --
 initFileState :: LangInfo -> BL.ByteString -> FileState
 initFileState lang_info contents =
@@ -55,12 +58,12 @@ langInfoMap = Map.fromList [ ("c",  cLangInfo      )
                            , ("hs", haskellLangInfo)
                            ]
 
--- slouch target
+-- sloch target
 --
 -- Counts the SLOC in |target| and prints to stdout.
 --
-slouch :: FilePath -> IO ()
-slouch target = do
+sloch :: FilePath -> IO ()
+sloch target = do
    file_exists      <- doesFileExist      target
    directory_exists <- doesDirectoryExist target
 
@@ -91,7 +94,7 @@ slochFile target = do
 slochDirectory :: FilePath -> IO ()
 slochDirectory target = do
    contents <- getDirectoryContents_ target
-   forM_ contents slouch
+   forM_ contents sloch
 
 -- getDirectoryContents_ target
 --
@@ -121,25 +124,57 @@ filterContents_ = do
    case file_contents of
       [] -> return ()
       (x:xs) -> do
-         x' <- removeLineComments x >>=
-               removeBlockComments  >>=
-               removeBoilerPlate . bStrip    -- strip before matching boiler plate
+         maybe_line <- removeLineComment x >>=
+                       removeBlockComment  >>=
+                       removeBoilerPlate . bStrip    -- strip before matching boiler plate
 
-         fsContents         .= xs
-         fsFilteredContents %= (++ [x'])  -- TODO: Can this be refactored to use (:)?
+         fsContents .= xs    -- TODO: This vs. %= tail
+
+         when (isJust maybe_line) $
+            fsFilteredContents %= (fromJust maybe_line :)  -- TODO: fromJust -_-
+
          filterContents_
 
-removeLineComments :: BL.ByteString -> Sloch BL.ByteString
-removeLineComments line = do
-   line_comment <- uses fsLangInfo lineComment
+-- removeLineComment line
+--
+-- Removes line comment from |line|, if any.
+--
+removeLineComment :: BL.ByteString -> Sloch BL.ByteString
+removeLineComment line = do
+   line_comment <- use $ fsLangInfo . liLineComment
    let (line', _) = B.breakSubstring (lazyToStrictBS line_comment) (lazyToStrictBS line)
    return $ BL.fromChunks [line']
 
-removeBlockComments :: BL.ByteString -> Sloch BL.ByteString
-removeBlockComments = return
+-- removeBlockComment line
+--
+-- Remove block comment from |line|, if any. Modifies state per entering
+-- or leaving a block comment.
+--
+-- Currently this function is a bit stupid - it will enter the block
+-- comment state if the TODO
+removeBlockComment :: BL.ByteString -> Sloch BL.ByteString
+removeBlockComment = return
 
-removeBoilerPlate :: BL.ByteString -> Sloch BL.ByteString
-removeBoilerPlate = return
+-- removeBoilerPlate line
+--
+-- Returns Nothing if the line is boiler plate, or Just |line| if it isn't.
+-- Requires |line| to be stripped.
+--
+removeBoilerPlate :: BL.ByteString -> Sloch (Maybe BL.ByteString)
+removeBoilerPlate line =
+   -- Hacky unintuitive spot for filtering null lines. This is better than
+   -- having "null" explicitly be boiler plate in each language info, and works
+   -- here because |line| is stripped, but there is probably a better spot
+   -- for it.
+   if BL.null line
+      then return Nothing
+      else do
+         line_filters <- use $ fsLangInfo . liBoilerPlate
+
+         return $
+            if or $ line_filters <*> pure line
+               then Nothing
+               else Just line
 
 -- removeBoilerPlate lang_info contents
 --
@@ -194,4 +229,4 @@ main :: IO ()
 main = do
    (opts, [target]) <- getArgs >>= parseOptions
    print opts
-   slouch target
+   sloch target

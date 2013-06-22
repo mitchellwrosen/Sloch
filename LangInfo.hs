@@ -1,8 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
 
 module LangInfo where
 
 import ByteStringUtils
+
+import Control.Lens (makeLenses)
 
 import qualified Data.ByteString.Lazy.Char8 as B
 
@@ -12,10 +14,12 @@ import qualified Data.ByteString.Lazy.Char8 as B
 type LineFilter = B.ByteString -> Bool
 
 data LangInfo =
-   LangInfo { lineComment  :: B.ByteString                 -- line comment sequence
-            , blockComment :: (B.ByteString, B.ByteString) -- (begin block comment, end block comment)
-            , boilerPlate  :: [LineFilter]                 -- boiler plate lines that don't "count" as real code
+   LangInfo { _liLineComment  :: B.ByteString                 -- line comment sequence
+            , _liBlockComment :: (B.ByteString, B.ByteString) -- (begin block comment, end block comment)
+            , _liBoilerPlate  :: [LineFilter]                 -- boiler plate lines that don't "count" as real code
             }
+
+makeLenses ''LangInfo
 
 is :: Eq a => a -> a -> Bool
 is = (==)

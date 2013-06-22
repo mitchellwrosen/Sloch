@@ -1,25 +1,49 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
 
 module Main where
 
 import Debug.Trace
 
+import ByteStringUtils
 import LangInfo
 
-import Control.Lens ((.~), both, element, makeLenses, over, set)
-import Control.Monad (forM_, when)
+import Control.Lens ((.=), (%=), (^.), makeLenses, set, use, uses)
+import Control.Monad.State
 import Data.List (intercalate)
-import Data.String.Utils (strip)
 import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
 import System.Environment (getArgs)
 import System.FilePath (takeExtension)
 import System.Exit (ExitCode(..), exitWith)
-import Text.Regex.PCRE (MatchLength, MatchOffset, (=~), getAllMatches)
 
-import qualified Data.Map      as Map
-import qualified Data.Set      as Set
-import qualified Data.Foldable as F
+import qualified Data.ByteString            as B
+import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.Map                   as Map
+
+type Sloch = State FileState
+
+-- The state of a file being filtered, including what language it's in.
+--
+data FileState =
+   FileState { _fsLangInfo         :: LangInfo       -- The language info of the file.
+             , _fsContents         :: [BL.ByteString] -- The remaining unfiltered lines.
+             , _fsFilteredContents :: [BL.ByteString] -- The lines filtered thus far.
+             , _fsInBlockComment   :: Bool           -- Whether or not we are inside a block comment.
+             }
+
+makeLenses ''FileState
+
+-- initFileState contents
+--
+-- Creates a FileState from a file as a ByteString
+--
+initFileState :: LangInfo -> BL.ByteString -> FileState
+initFileState lang_info contents =
+   FileState { _fsLangInfo   = lang_info
+             , _fsContents   = BL.lines contents
+             , _fsFilteredContents = []
+             , _fsInBlockComment = False
+             }
 
 -- POSIX regex escape characters.
 --
@@ -27,8 +51,8 @@ regexEscapeChars :: String
 regexEscapeChars = ".^$*+?()[{\\"
 
 langInfoMap :: Map.Map String LangInfo
-langInfoMap = Map.fromList [ ("c"      , cLangInfo      )
-                           , ("haskell", haskellLangInfo)
+langInfoMap = Map.fromList [ ("c",  cLangInfo      )
+                           , ("hs", haskellLangInfo)
                            ]
 
 -- slouch target
@@ -56,9 +80,9 @@ slochFile target = do
 
    case Map.lookup ext langInfoMap of
       Just lang_info -> do
-         contents <- readFile target
+         contents <- BL.readFile target
          let sloc = filterContents lang_info contents
-         mapM_ putStrLn sloc
+         mapM_ (putStrLn . BL.unpack) sloc
          putStrLn $ "Lines: " ++ show (length sloc)
       Nothing -> do
          putStrLn $ "Unknown file extension: '" ++ ext ++ "'"
@@ -66,107 +90,69 @@ slochFile target = do
 
 slochDirectory :: FilePath -> IO ()
 slochDirectory target = do
-   contents <- getDirectoryContents' target
+   contents <- getDirectoryContents_ target
    forM_ contents slouch
 
--- getDirectoryContents' target
+-- getDirectoryContents_ target
 --
 -- Gets directory contents from |target|, less "." and ".."
 --
-getDirectoryContents' :: FilePath -> IO [FilePath]
-getDirectoryContents' target = do
+getDirectoryContents_ :: FilePath -> IO [FilePath]
+getDirectoryContents_ target = do
    contents <- getDirectoryContents target
    return $ filter (`notElem` [".", ".."]) contents
 
 -- filterContents lang_info contents
 --
--- Filters comments out of |contents| (a flat string) per |lang_info|,
--- returning the filtered contents as a list of strings. This function
--- basically reads backwards.
+-- Filters comments out of |contents| (a flat bytestring) per |lang_info|,
+-- returning the filtered contents as a list of strings.
 --
-filterContents :: LangInfo -> String -> [String]
-filterContents lang_info =
-   removeBoilerPlate lang_info . -- Remove boiler plate
-   removeEmptyLines            . -- Removes lines consisting of only whitespace
-   lines                       . -- Split on newlines
-   replaceComments   lang_info   -- Replace comments with newlines
+filterContents :: LangInfo -> BL.ByteString -> [BL.ByteString]
+filterContents lang_info contents = final_file_state ^. fsFilteredContents
+   where init_file_state :: FileState
+         init_file_state = initFileState lang_info contents
 
--- replaceComments lang_info contents
---
--- Replaces all comments in |contents| with newline characters, where the
--- comment syntax is defined in |lang_info|.
---
-replaceComments :: LangInfo -> String -> String
-replaceComments lang_info contents =
-   let
-      lineCommentIndices  = findIndices (line_comment ++ ".*\n")                     contents
-      blockCommentIndices = findIndices (begin_comment ++ "(.|\\n)*" ++ end_comment) contents -- multi-line regex hack
-      indices             = Set.union lineCommentIndices blockCommentIndices
-   in
-      setAll '\n' contents indices
+         final_file_state :: FileState
+         final_file_state = execState filterContents_ init_file_state
 
-   where
-      line_comment                 =           regexEscape $ lineComment lang_info
-      (begin_comment, end_comment) = over both regexEscape $ blockComment lang_info
+filterContents_ :: Sloch ()
+filterContents_ = do
+   file_contents <- use fsContents
+   case file_contents of
+      [] -> return ()
+      (x:xs) -> do
+         x' <- removeLineComments x >>=
+               removeBlockComments  >>=
+               removeBoilerPlate . bStrip    -- strip before matching boiler plate
 
--- findIndices pattern contents
---
--- Returns all indices in |contents| that were part of some instance of
--- |pattern| (a regex)
-findIndices :: String -> String -> Set.Set Int
-findIndices pattern haystack =
-   let offsets = getAllMatches $ haystack =~ pattern :: [(MatchOffset, MatchLength)]
-   in offsetsToIndices offsets
+         fsContents         .= xs
+         fsFilteredContents %= (++ [x'])  -- TODO: Can this be refactored to use (:)?
+         filterContents_
 
--- offsetsToIndices matches
---
--- Converts |offsets| into a set of indices.
---
--- For example:
---    [(1,2), (5,4)] to [[1,2], [5,6,7,8]] to Set(1,2,5,6,7,8)
---
-offsetsToIndices :: [(MatchOffset, MatchLength)] -> Set.Set Int
-offsetsToIndices = foldr insertIndices Set.empty
-   where
-      insertIndices :: (MatchOffset, MatchLength) -> Set.Set Int -> Set.Set Int
-      insertIndices (offset, len) set = insertAll set $ take len [offset..]
+removeLineComments :: BL.ByteString -> Sloch BL.ByteString
+removeLineComments line = do
+   line_comment <- uses fsLangInfo lineComment
+   let (line', _) = B.breakSubstring (lazyToStrictBS line_comment) (lazyToStrictBS line)
+   return $ BL.fromChunks [line']
 
-      insertAll :: Ord a => Set.Set a -> [a] -> Set.Set a
-      insertAll = foldr Set.insert
+removeBlockComments :: BL.ByteString -> Sloch BL.ByteString
+removeBlockComments = return
 
--- setAll x xs indices
---
--- Sets the |indices| elements of |xs| to |x|.
---
-setAll :: F.Foldable t => a -> [a] -> t Int -> [a]
-setAll x = F.foldr (\index xs -> element index .~ x $ xs)
-
-regexEscape :: String -> String
-regexEscape = concatMap (\c -> if c `elem` regexEscapeChars
-                                  then '\\':[c]
-                                  else [c]
-                        )
+removeBoilerPlate :: BL.ByteString -> Sloch BL.ByteString
+removeBoilerPlate = return
 
 -- removeBoilerPlate lang_info contents
 --
 -- Removes boiler plate lines from |contents| per the boiler plate matching
 -- rules in |lang_info|.
 --
-removeBoilerPlate :: LangInfo -> [String] -> [String]
-removeBoilerPlate lang_info contents =
-   foldr applyFilter contents (boilerPlate lang_info)
+{-removeBoilerPlate :: LangInfo -> [BL.ByteString] -> [BL.ByteString]-}
+{-removeBoilerPlate lang_info contents =-}
+   {-foldr applyFilter contents (boilerPlate lang_info)-}
 
-   where
-      applyFilter :: LineFilter -> [String] -> [String]
-      applyFilter f = filter (not . f)
-
--- removeEmptyLines contents
---
--- Removes empty lines from |contents|, where "empty" means containing only
--- whitespace.
---
-removeEmptyLines :: [String] -> [String]
-removeEmptyLines = filter (not . null) . map strip
+   {-where-}
+      {-applyFilter :: LineFilter -> [BL.ByteString] -> [BL.ByteString]-}
+      {-applyFilter f = filter (not . f)-}
 
 --------------------------------------------------------------------------------
 
@@ -209,4 +195,3 @@ main = do
    (opts, [target]) <- getArgs >>= parseOptions
    print opts
    slouch target
-

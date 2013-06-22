@@ -8,16 +8,14 @@ import ByteStringUtils
 import LangInfo
 
 import Control.Applicative ((<*>), pure)
-import Control.Lens ((.=), (%=), (^.), makeLenses, set, use, uses)
-import Control.Monad (when)
+import Control.Lens ((.=), (%=), (^.), both, makeLenses, over, set, use)
 import Control.Monad.State
 import Data.List (intercalate)
 import Data.Maybe (fromJust, isJust)
 import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
 import System.Environment (getArgs)
-import System.FilePath (takeExtension)
-import System.Exit (ExitCode(..), exitWith)
+import System.FilePath ((</>), takeExtension)
 
 import qualified Data.ByteString            as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -28,10 +26,10 @@ type Sloch = State FileState
 -- The state of a file being filtered, including what language it's in.
 --
 data FileState =
-   FileState { _fsLangInfo         :: LangInfo       -- The language info of the file.
+   FileState { _fsLangInfo         :: LangInfo        -- The language info of the file.
              , _fsContents         :: [BL.ByteString] -- The remaining unfiltered lines.
              , _fsFilteredContents :: [BL.ByteString] -- The lines filtered thus far.
-             , _fsInBlockComment   :: Bool           -- Whether or not we are inside a block comment.
+             , _fsInBlockComment   :: Bool            -- Whether or not we are inside a block comment.
              }
 
 makeLenses ''FileState
@@ -47,11 +45,6 @@ initFileState lang_info contents =
              , _fsFilteredContents = []
              , _fsInBlockComment = False
              }
-
--- POSIX regex escape characters.
---
-regexEscapeChars :: String
-regexEscapeChars = ".^$*+?()[{\\"
 
 langInfoMap :: Map.Map String LangInfo
 langInfoMap = Map.fromList [ ("c",  cLangInfo      )
@@ -85,16 +78,15 @@ slochFile target = do
       Just lang_info -> do
          contents <- BL.readFile target
          let sloc = filterContents lang_info contents
-         mapM_ (putStrLn . BL.unpack) sloc
-         putStrLn $ "Lines: " ++ show (length sloc)
-      Nothing -> do
-         putStrLn $ "Unknown file extension: '" ++ ext ++ "'"
-         exitWith $ ExitFailure 1
+         {-mapM_ (putStrLn . BL.unpack) sloc-}
+         putStrLn $ target ++ ": " ++ show (length sloc) ++ " lines"
+      Nothing -> return ()
 
 slochDirectory :: FilePath -> IO ()
 slochDirectory target = do
    contents <- getDirectoryContents_ target
-   forM_ contents sloch
+   let full_path_contents = map (target </>) contents
+   forM_ full_path_contents sloch
 
 -- getDirectoryContents_ target
 --
@@ -124,8 +116,8 @@ filterContents_ = do
    case file_contents of
       [] -> return ()
       (x:xs) -> do
-         maybe_line <- removeLineComment x >>=
-                       removeBlockComment  >>=
+         maybe_line <- removeLineComment (lazyToStrictBS x) >>=
+                       removeBlockComment . lazyToStrictBS  >>=
                        removeBoilerPlate . bStrip    -- strip before matching boiler plate
 
          fsContents .= xs    -- TODO: This vs. %= tail
@@ -139,10 +131,10 @@ filterContents_ = do
 --
 -- Removes line comment from |line|, if any.
 --
-removeLineComment :: BL.ByteString -> Sloch BL.ByteString
+removeLineComment :: B.ByteString -> Sloch BL.ByteString
 removeLineComment line = do
-   line_comment <- use $ fsLangInfo . liLineComment
-   let (line', _) = B.breakSubstring (lazyToStrictBS line_comment) (lazyToStrictBS line)
+   line_comment <- liftM lazyToStrictBS $ use (fsLangInfo . liLineComment)
+   let (line', _) = B.breakSubstring line_comment line
    return $ BL.fromChunks [line']
 
 -- removeBlockComment line
@@ -150,10 +142,81 @@ removeLineComment line = do
 -- Remove block comment from |line|, if any. Modifies state per entering
 -- or leaving a block comment.
 --
--- Currently this function is a bit stupid - it will enter the block
--- comment state if the TODO
-removeBlockComment :: BL.ByteString -> Sloch BL.ByteString
-removeBlockComment = return
+-- Currently this function is not very smart:
+--
+--  - First, it possibly exits block comment state by if there exists an
+--    end-comment without a preceding begin-comment.
+--
+--  - Then, it will enter block comment state if it finds a begin-comment
+--    and no matching end-comment, but either way, will delete from the
+--    begin-comment onward.
+--
+-- Thus, it can get confused in many ways, such as:
+--
+-- int foo = 1; /* comment */ /* another!
+--
+-- which will result in the block comment state NOT being entered, due to
+-- the matching end-comment (and deletion of the entire line from
+-- begin-comment onward).
+--
+-- Because all of these little corner cases all look like horrible style to
+-- me, and this simplistic approach is much faster than a mini parser would
+-- be, I'm sticking to it. Please let me know if there is a good argument
+-- against the implementation described above, as I would love to improve
+-- this code :)
+--
+removeBlockComment :: B.ByteString -> Sloch BL.ByteString
+removeBlockComment line = do
+   line' <- possiblyEndBlockComment line >>= possiblyEnterBlockComment
+   return $ BL.fromChunks [line']
+
+-- getBlockComment
+--
+-- Get the block comment of the current language as a strict byte string
+-- tuple.
+--
+getBlockComment :: Sloch (B.ByteString, B.ByteString)
+getBlockComment = liftM (over both lazyToStrictBS) $ use (fsLangInfo . liBlockComment)
+
+-- possiblyEndBlockComment line
+--
+-- If there exists an end-comment without a begin-comment before it in
+-- |line|, delete up to and including the end-comment, leave the in block
+-- comment state, and return the remaining line.
+--
+possiblyEndBlockComment :: B.ByteString -> Sloch B.ByteString
+possiblyEndBlockComment line = do
+   (begin_c, end_c) <- getBlockComment
+
+   let (before_end, end_on)   = B.breakSubstring end_c   line
+   let (_,          begin_on) = B.breakSubstring begin_c before_end
+
+   if (not . B.null) end_on && B.null begin_on
+      then do
+         fsInBlockComment .= False
+         return $ B.drop (B.length end_c) end_on
+      else return line
+
+-- possiblyEnterBlockComment line
+--
+-- If there exists a begin-comment in |line|, delete everything from it
+-- onward. Additionally, if there is no end-comment after it, enter the
+-- in block comment state.
+--
+possiblyEnterBlockComment :: B.ByteString -> Sloch B.ByteString
+possiblyEnterBlockComment line = do
+   (begin_c, end_c) <- getBlockComment
+
+   let (before_begin, begin_on) = B.breakSubstring begin_c line
+   let (_,            end_on)   = B.breakSubstring end_c   begin_on
+
+   if B.null begin_on
+      then return line
+      else do
+         when (B.null end_on) $
+            fsInBlockComment .= True
+
+         return before_begin
 
 -- removeBoilerPlate line
 --
@@ -163,9 +226,9 @@ removeBlockComment = return
 removeBoilerPlate :: BL.ByteString -> Sloch (Maybe BL.ByteString)
 removeBoilerPlate line =
    -- Hacky unintuitive spot for filtering null lines. This is better than
-   -- having "null" explicitly be boiler plate in each language info, and works
-   -- here because |line| is stripped, but there is probably a better spot
-   -- for it.
+   -- having "null" explicitly be boiler plate in each language info, and
+   -- works here because |line| is stripped, but there is probably a better
+   -- spot for it.
    if BL.null line
       then return Nothing
       else do
@@ -176,20 +239,7 @@ removeBoilerPlate line =
                then Nothing
                else Just line
 
--- removeBoilerPlate lang_info contents
---
--- Removes boiler plate lines from |contents| per the boiler plate matching
--- rules in |lang_info|.
---
-{-removeBoilerPlate :: LangInfo -> [BL.ByteString] -> [BL.ByteString]-}
-{-removeBoilerPlate lang_info contents =-}
-   {-foldr applyFilter contents (boilerPlate lang_info)-}
-
-   {-where-}
-      {-applyFilter :: LineFilter -> [BL.ByteString] -> [BL.ByteString]-}
-      {-applyFilter f = filter (not . f)-}
-
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------
 
 data Options = Options
    { _optShowHelp    :: Bool
@@ -228,5 +278,4 @@ parseOptions args =
 main :: IO ()
 main = do
    (opts, [target]) <- getArgs >>= parseOptions
-   print opts
    sloch target

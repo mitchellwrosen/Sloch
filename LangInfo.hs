@@ -28,8 +28,8 @@ cLangInfo = LangInfo cLineComment cBlockComment cBoilerPlate
 cLineComment  = "//"
 cBlockComment = ("/*", "*/")
 cBoilerPlate  = [ B.isPrefixOf "#include"
-                , is           "}"
                 , is           "{"
+                , is           "}"
                 , is           ";"
                 ]
 
@@ -41,7 +41,14 @@ haskellBlockComment = ("{-", "-}")
 haskellBoilerPlate = [ B.isPrefixOf "module " -- module declaration
                      , B.isPrefixOf "import " -- import statement
                      , bIsInfixOf   "::"      -- type annotations
+                     , is           "do"
+                     , is           "in"
                      , is           "let"
                      , is           "where"
+                     , is           "{"
+                     , is           "}"
+                     , is           "["
+                     , is           "]"
                      ]
 
+---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 module Language where
 
-import Control.Lens ((.~), makeLenses)
+import Control.Lens ((&), (.~), (%~), makeLenses)
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map              as Map
@@ -30,47 +30,70 @@ is = (==)
 -- knows about.
 --
 langInfoMap :: Map.Map String Language
-langInfoMap = Map.fromList [ ("c",  cLanguage      )
-                           , ("go", goLanguage     )
-                           , ("h",  cHeaderLanguage)
-                           , ("hs", haskellLanguage)
-                           , ("py", pythonLanguage )
+langInfoMap = Map.fromList [ ("c",      cLanguage)
+                           , ("cc",     cppLanguage)
+                           , ("cpp",    cppLanguage)
+                           , ("java",   javaLanguage)
+                           , ("js",     javascriptLanguage)
+                           , ("go",     goLanguage)
+                           , ("groovy", groovyLanguage)
+                           , ("h",      cHeaderLanguage)
+                           , ("hs",     haskellLanguage)
+                           , ("py",     pythonLanguage)
+                           , ("rb",     rubyLanguage)
                            ]
 
-cLanguage :: Language
-cLanguage = Language
-   { _lName         = "C"
+-- Template for languages with similar syntax to C.
+cLikeLanguage :: Language
+cLikeLanguage = Language
+   { _lName         = "C-like"
    , _lLineComment  = "//"
    , _lBlockComment = ("/*", "*/")
-   , _lBoilerPlate  = [ B.isPrefixOf "#include"
-                      , is "{"
+   , _lBoilerPlate  = [ is "{"
                       , is "}"
                       , is ";"
                       ]
    }
 
+
+cLanguage :: Language
+cLanguage = cLikeLanguage &
+   lName .~ "C" &
+   lBoilerPlate %~ (B.isPrefixOf "#include" :)
+
 cHeaderLanguage :: Language
-cHeaderLanguage = lName .~ "C Header" $ cLanguage
+cHeaderLanguage = cLanguage & lName .~ "C/C++ Header"
+
+cppLanguage :: Language
+cppLanguage = cLanguage & lName .~ "C++"
+
+javaLanguage :: Language
+javaLanguage = cLikeLanguage &
+   lName .~ "Java" &
+   lBoilerPlate %~ (B.isPrefixOf "import "  :) .
+                   (B.isPrefixOf "package " :)
+
+javascriptLanguage :: Language
+javascriptLanguage = cLikeLanguage & lName .~ "Javascript"
 
 goLanguage :: Language
-goLanguage = Language
-   { _lName         = "Go"
-   , _lLineComment  = "//"
-   , _lBlockComment = ("/*", "*/")
-   , _lBoilerPlate  = [ B.isPrefixOf "import " 
-                      , B.isPrefixOf "package "
-                      , is "}"
-                      ]
-   }
+goLanguage = cLikeLanguage &
+   lName .~ "Go" &
+   lBoilerPlate %~ (B.isPrefixOf "import "  :) .
+                   (B.isPrefixOf "package " :) .
+                   (is ")" :)
+
+groovyLanguage :: Language
+groovyLanguage = javaLanguage & lName .~ "Groovy"
 
 haskellLanguage :: Language
 haskellLanguage = Language
    { _lName         = "Haskell"
    , _lLineComment  = "--"
    , _lBlockComment = ("{-", "-}")
-   , _lBoilerPlate  = [ B.isPrefixOf "import " 
-                      , B.isPrefixOf "module " 
-                      , B.isInfixOf   "::" -- type annotations   
+   , _lBoilerPlate  = [ B.isPrefixOf "import "
+                      , B.isPrefixOf "module "
+                      , B.isInfixOf   "::" -- type annotations
                       , is "do"
                       , is "in"
                       , is "let"
@@ -87,7 +110,21 @@ pythonLanguage = Language
    { _lName         = "Python"
    , _lLineComment  = "#"
    , _lBlockComment = ("'''", "'''")
-   , _lBoilerPlate  = [ B.isPrefixOf "import " 
+   , _lBoilerPlate  = [ B.isPrefixOf "import "
                       , B.isPrefixOf "from "   -- from Foo import Bar
+                      ]
+   }
+
+rubyLanguage :: Language
+rubyLanguage = Language
+   { _lName         = "Ruby"
+   , _lLineComment  = "#"
+   , _lBlockComment = ("=begin", "=end")
+   , _lBoilerPlate  = [ B.isPrefixOf "load "
+                      , B.isPrefixOf "require "
+                      , B.isPrefixOf "require_relative "
+                      , is "end "
+                      , is "{"
+                      , is "}"
                       ]
    }

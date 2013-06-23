@@ -24,6 +24,12 @@ import Text.Printf (printf)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map              as Map
 
+version :: String
+version = "0.1"
+
+versionStr :: String
+versionStr = "Sloch v" ++ version ++ " by Mitchell Rosen"
+
 type LineCountInfo = (FilePath, Int)
 type Sloch = WriterT [LineCountInfo] IO
 
@@ -281,13 +287,18 @@ main :: IO ()
 main = do
    (opts, targets) <- getArgs >>= parseOptions
 
+   when (opts ^. optShowHelp)    $ putStrLn usage
+   when (opts ^. optShowVersion) $ putStrLn versionStr
+
    results <- forM targets (runWriterT . sloch)
 
-   let line_counts       = concatMap snd results
-   let total_line_counts = Map.toList $ totalLineCounts line_counts
-   let total = foldrOf (traverse . _2) (+) 0 total_line_counts
+   let counts        = concatMap snd results                     -- List of line counts, one per file
+   let aggr_counts   = Map.toList $ totalLineCounts counts       -- Aggregated by filetypes
+   let total_counts  = foldrOf (traverse . _2) (+) 0 aggr_counts -- Sum of all lines in all files
 
-   forM_ line_counts       $ \(s, n) -> putStrLn (s ++ ": " ++ show n ++ " lines")
-   putStrLn "----------"
-   forM_ total_line_counts $ \(s, n) -> putStr $
-      printf "Total %s: %d lines (%.2f%%)\n" (B.unpack s) n (100 * (fromIntegral n :: Float) / (fromIntegral total :: Float))
+   when (opts ^. optVerbose) $ do
+      forM_ counts $ \(s, n) -> putStr $ printf "%s: %d lines\n" s n
+      putStrLn "----------"
+
+   forM_ aggr_counts $ \(s, n) -> putStr $
+      printf "Total %s: %d lines (%.2f%%)\n" (B.unpack s) n (100 * (fromIntegral n :: Float) / (fromIntegral total_counts :: Float))

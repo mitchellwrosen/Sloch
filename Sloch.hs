@@ -19,6 +19,7 @@ import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
 import System.Environment (getArgs)
 import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 import Text.Printf (printf)
 
 import qualified Data.ByteString.Char8 as B
@@ -67,7 +68,7 @@ sloch target = do
 
    if | file_exists      -> slochFile target
       | directory_exists -> slochDirectory target
-      | otherwise        -> liftIO $ putStrLn $ "'" ++ target ++ "' does not exist"
+      | otherwise        -> liftIO $ hPutStrLn stderr $ "'" ++ target ++ "' does not exist"
 
 -- slochFile target
 --

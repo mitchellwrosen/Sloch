@@ -182,18 +182,20 @@ removeLineComment line = do
 --
 removeBlockComment :: B.ByteString -> State FileState B.ByteString
 removeBlockComment line = do
-   (begin_c, end_c) <- use $ fsLanguage . lBlockComment
+   maybe_block_comments <- use $ fsLanguage . lBlockComment
+   case maybe_block_comments of
+      Just (begin_c, end_c) -> do
+         let (before_begin, begin_on) = B.breakSubstring begin_c line
+         let (_,            end_on)   = B.breakSubstring end_c   begin_on
 
-   let (before_begin, begin_on) = B.breakSubstring begin_c line
-   let (_,            end_on)   = B.breakSubstring end_c   begin_on
+         if B.null begin_on
+            then return line
+            else do
+               when (B.null end_on) $
+                  fsInBlockComment .= True
 
-   if B.null begin_on
-      then return line
-      else do
-         when (B.null end_on) $
-            fsInBlockComment .= True
-
-         return before_begin
+               return before_begin
+      Nothing -> return line
 
 -- possiblyEndBlockComment line
 --
@@ -207,7 +209,11 @@ possiblyEndBlockComment line = do
 
    if in_block_comment
       then do
-         (begin_c, end_c) <- use $ fsLanguage . lBlockComment
+         -- FIXME: fromJust -_-
+         -- We can (safely) assume that if fsInBlockComment was set, then
+         -- this language has a block comment that was entered. Still,
+         -- fromJust...
+         (begin_c, end_c) <- liftM fromJust $ use (fsLanguage . lBlockComment)
 
          let (before_end, end_on)   = B.breakSubstring end_c   line
          let (_,          begin_on) = B.breakSubstring begin_c before_end

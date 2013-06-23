@@ -13,10 +13,10 @@ import qualified Data.Map              as Map
 type LineFilter = B.ByteString -> Bool
 
 data Language =
-   Language { _lName           :: B.ByteString                 -- Name of the language
-            , _lLineComment    :: B.ByteString                 -- Line comment sequence
-            , _lBlockComment   :: (B.ByteString, B.ByteString) -- (begin block comment, end block comment)
-            , _lBoilerPlate    :: [LineFilter]                 -- Boiler plate lines that don't "count" as real code
+   Language { _lName           :: B.ByteString                       -- Name of the language
+            , _lLineComment    :: B.ByteString                       -- Line comment delimiter
+            , _lBlockComment   :: Maybe (B.ByteString, B.ByteString) -- Block comment delimiters, if they exist
+            , _lBoilerPlate    :: [LineFilter]                       -- Boiler plate lines that don't "count" as real code
             }
 
 makeLenses ''Language
@@ -41,6 +41,7 @@ langInfoMap = Map.fromList [ ("c",      cLanguage)
                            , ("hs",     haskellLanguage)
                            , ("py",     pythonLanguage)
                            , ("rb",     rubyLanguage)
+                           , ("sh",     shellLanguage)
                            ]
 
 -- Template for languages with similar syntax to C.
@@ -48,7 +49,7 @@ cLikeLanguage :: Language
 cLikeLanguage = Language
    { _lName         = "C-like"
    , _lLineComment  = "//"
-   , _lBlockComment = ("/*", "*/")
+   , _lBlockComment = Just ("/*", "*/")
    , _lBoilerPlate  = [ is "{"
                       , is "}"
                       , is ";"
@@ -90,7 +91,7 @@ haskellLanguage :: Language
 haskellLanguage = Language
    { _lName         = "Haskell"
    , _lLineComment  = "--"
-   , _lBlockComment = ("{-", "-}")
+   , _lBlockComment = Just ("{-", "-}")
    , _lBoilerPlate  = [ B.isPrefixOf "import "
                       , B.isPrefixOf "module "
                       , B.isInfixOf   "::" -- type annotations
@@ -109,7 +110,7 @@ pythonLanguage :: Language
 pythonLanguage = Language
    { _lName         = "Python"
    , _lLineComment  = "#"
-   , _lBlockComment = ("'''", "'''")
+   , _lBlockComment = Just ("'''", "'''")
    , _lBoilerPlate  = [ B.isPrefixOf "import "
                       , B.isPrefixOf "from "   -- from Foo import Bar
                       ]
@@ -119,12 +120,24 @@ rubyLanguage :: Language
 rubyLanguage = Language
    { _lName         = "Ruby"
    , _lLineComment  = "#"
-   , _lBlockComment = ("=begin", "=end")
+   , _lBlockComment = Just ("=begin", "=end")
    , _lBoilerPlate  = [ B.isPrefixOf "load "
                       , B.isPrefixOf "require "
                       , B.isPrefixOf "require_relative "
                       , is "end "
                       , is "{"
                       , is "}"
+                      ]
+   }
+
+shellLanguage :: Language
+shellLanguage = Language
+   { _lName         = "Shell script"
+   , _lLineComment  = "#"
+   , _lBlockComment = Nothing
+   , _lBoilerPlate  = [ is "do"
+                      , is "done"
+                      , is "esac"
+                      , is "fi"
                       ]
    }

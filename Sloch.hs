@@ -9,7 +9,7 @@ import Language
 import MapUtils
 
 import Control.Applicative ((<*>), pure)
-import Control.Lens ((.=), (%=), (^.), makeLenses, set, use)
+import Control.Lens ((.=), (%=), (^.), _2, foldrOf, makeLenses, set, traverse, use)
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
@@ -19,6 +19,7 @@ import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
 import System.Environment (getArgs)
 import System.FilePath ((</>))
+import Text.Printf (printf)
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map              as Map
@@ -74,7 +75,7 @@ slochFile target = do
       Just lang_info -> do
          contents <- liftIO $ B.readFile target -- Strict read to close file handle
          let sloc = filterContents lang_info contents
-         liftIO $ mapM_ (putStrLn . B.unpack) sloc -- DEBUG: print lines to console
+         {-liftIO $ mapM_ (putStrLn . B.unpack) sloc -- DEBUG: print lines to console-}
          tell [(target, length sloc)]
       Nothing -> return ()
 
@@ -284,7 +285,9 @@ main = do
 
    let line_counts       = concatMap snd results
    let total_line_counts = Map.toList $ totalLineCounts line_counts
+   let total = foldrOf (traverse . _2) (+) 0 total_line_counts
 
    forM_ line_counts       $ \(s, n) -> putStrLn (s ++ ": " ++ show n ++ " lines")
    putStrLn "----------"
-   forM_ total_line_counts $ \(s, n) -> putStrLn ("Total " ++ B.unpack s ++ ": " ++ show n ++ " lines")
+   forM_ total_line_counts $ \(s, n) -> putStr $
+      printf "Total %s: %d lines (%.2f%%)\n" (B.unpack s) n (100 * (fromIntegral n :: Float) / (fromIntegral total :: Float))

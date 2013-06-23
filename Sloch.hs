@@ -13,7 +13,9 @@ import Control.Lens ((.=), (%=), (^.), _2, foldrOf, makeLenses, set, traverse, u
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
+import Data.List (sortBy)
 import Data.Maybe (fromJust, isJust)
+import Data.Ord (comparing)
 import Data.String.Utils (strip)
 import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
@@ -293,9 +295,9 @@ main = do
 
    results <- forM targets (runWriterT . sloch)
 
-   let counts        = concatMap snd results                     -- List of line counts, one per file
-   let aggr_counts   = Map.toList $ totalLineCounts counts       -- Aggregated by filetypes
-   let total_counts  = foldrOf (traverse . _2) (+) 0 aggr_counts -- Sum of all lines in all files
+   let counts        = concatMap snd results                                           -- List of line counts, one per file
+   let aggr_counts   = sortBy (flip $ comparing snd) (Map.toList $ totalLineCounts counts) -- Aggregated by filetypes
+   let total_counts  = foldrOf (traverse . _2) (+) 0 aggr_counts                       -- Sum of all lines in all files
 
    when (opts ^. optVerbose) $ do
       forM_ counts $ \(s, n) -> putStr $ printf "%s: %d lines\n" s n

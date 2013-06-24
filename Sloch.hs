@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiWayIf, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE MultiWayIf, OverloadedStrings, ScopedTypeVariables, TemplateHaskell #-}
 
 module Main where
 
@@ -10,23 +10,26 @@ import MapUtils
 
 import Control.Applicative ((<*>), pure)
 import Control.Lens ((.=), (%=), (^.), _2, foldrOf, makeLenses, set, traverse, use)
-import Control.Monad.Identity
-import Control.Monad.State
-import Control.Monad.Writer
+import Control.Monad.Identity -- TODO
+import Control.Exception -- TODO
+import Control.Monad.State    -- TODO
+import Control.Monad.Writer   -- TODO
 import Data.List (sortBy)
 import Data.Maybe (fromJust, isJust)
 import Data.Ord (comparing)
+import GHC.IO.Exception (IOErrorType(..))
 import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
 import System.Directory (getDirectoryContents)
 import System.Environment (getArgs)
 import System.FilePath ((</>))
 import System.IO (hPutStr, stderr)
+import System.IO.Error (ioeGetErrorType)
 import System.Posix.Files (fileExist, getSymbolicLinkStatus, isDirectory, isRegularFile)
-import Text.Printf (printf)
+import Text.Printf (hPrintf, printf)
 
 {-import qualified Data.ByteString.Char8 as B-}
 import qualified Data.Text    as T
-import qualified Data.Text.IO as T
+import qualified Data.Text.IO as T   -- Strictly read files to close handles
 import qualified Data.Map     as Map
 
 version :: String
@@ -88,10 +91,16 @@ slochFile target = do
 
    case Map.lookup ext langInfoMap of
       Just lang_info -> do
-         contents <- liftIO $ T.readFile target -- Strict read to close file handle
-         let sloc = filterContents lang_info contents
-         {-liftIO $ mapM_ (putStrLn . B.unpack) sloc -- DEBUG: print lines to console-}
-         tell [(target, length sloc)]
+
+         result <- liftIO $ try (T.readFile target)
+         case result of
+            Right contents -> do
+               let sloc = filterContents lang_info contents
+               {-liftIO $ mapM_ (putStrLn . T.unpack) sloc -- DEBUG: print lines to console-}
+               tell [(target, length sloc)]
+            Left err -> case ioeGetErrorType err of
+                           InvalidArgument -> liftIO $ hPrintf stderr "%s -- check your character encoding\n" (show err)
+                           _               -> throw err
       Nothing -> return ()
 
 -- slochDirectory target

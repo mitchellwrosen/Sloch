@@ -24,8 +24,10 @@ import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 import Text.Printf (printf)
 
-import qualified Data.ByteString.Char8 as B
-import qualified Data.Map              as Map
+{-import qualified Data.ByteString.Char8 as B-}
+import qualified Data.Text    as T
+import qualified Data.Text.IO as T
+import qualified Data.Map     as Map
 
 version :: String
 version = "0.1"
@@ -40,8 +42,8 @@ type Sloch = WriterT [LineCountInfo] IO
 --
 data FileState =
    FileState { _fsLanguage         :: Language       -- The language of the file.
-             , _fsContents         :: [B.ByteString] -- The remaining unfiltered lines.
-             , _fsFilteredContents :: [B.ByteString] -- The lines filtered thus far.
+             , _fsContents         :: [T.Text] -- The remaining unfiltered lines.
+             , _fsFilteredContents :: [T.Text] -- The lines filtered thus far.
              , _fsInBlockComment   :: Bool           -- Whether or not we are inside a block comment.
              }
 
@@ -51,10 +53,10 @@ makeLenses ''FileState
 --
 -- Creates a FileState from a file as a ByteString.
 --
-initFileState :: Language -> B.ByteString -> FileState
+initFileState :: Language -> T.Text -> FileState
 initFileState lang_info contents =
    FileState { _fsLanguage         = lang_info
-             , _fsContents         = B.lines contents
+             , _fsContents         = T.lines contents
              , _fsFilteredContents = []
              , _fsInBlockComment   = False
              }
@@ -82,7 +84,7 @@ slochFile target = do
 
    case Map.lookup ext langInfoMap of
       Just lang_info -> do
-         contents <- liftIO $ B.readFile target -- Strict read to close file handle
+         contents <- liftIO $ T.readFile target -- Strict read to close file handle
          let sloc = filterContents lang_info contents
          {-liftIO $ mapM_ (putStrLn . B.unpack) sloc -- DEBUG: print lines to console-}
          tell [(target, length sloc)]
@@ -112,7 +114,7 @@ getDirectoryContents_ target = do
 -- Filters comments out of |contents| (a flat bytestring) per |lang_info|,
 -- returning the filtered contents as a list of strings.
 --
-filterContents :: Language -> B.ByteString -> [B.ByteString]
+filterContents :: Language -> T.Text -> [T.Text]
 filterContents lang_info contents = final_file_state ^. fsFilteredContents
    where
       init_file_state :: FileState
@@ -138,23 +140,21 @@ filterContents_ = do
          unless in_block_comment $ do
             maybe_line <- removeBlockComment line >>=
                           removeLineComment       >>=
-                          removeBoilerPlate . strip' -- strip before matching boiler plate
+                          removeBoilerPlate . T.strip -- strip before matching boiler plate
 
             when (isJust maybe_line) $
                fsFilteredContents %= (fromJust maybe_line :)  -- TODO: fromJust -_-
 
          filterContents_
 
-   where strip' = B.pack . strip . B.unpack
-
 -- removeLineComment line
 --
 -- Removes line comment from |line|, if any.
 --
-removeLineComment :: B.ByteString -> State FileState B.ByteString
+removeLineComment :: T.Text -> State FileState T.Text
 removeLineComment line = do
    line_comment <- use (fsLanguage . lLineComment)
-   let (line', _) = B.breakSubstring line_comment line
+   let (line', _) = T.breakOn line_comment line
    return line'
 
 -- removeBlockComment line
@@ -180,18 +180,18 @@ removeLineComment line = do
 -- against the implementation described above, as I would love to improve
 -- this code :)
 --
-removeBlockComment :: B.ByteString -> State FileState B.ByteString
+removeBlockComment :: T.Text -> State FileState T.Text
 removeBlockComment line = do
    maybe_block_comments <- use $ fsLanguage . lBlockComment
    case maybe_block_comments of
       Just (begin_c, end_c) -> do
-         let (before_begin, begin_on) = B.breakSubstring begin_c line
-         let (_,            end_on)   = B.breakSubstring end_c   begin_on
+         let (before_begin, begin_on) = T.breakOn begin_c line
+         let (_,            end_on)   = T.breakOn end_c   begin_on
 
-         if B.null begin_on
+         if T.null begin_on
             then return line
             else do
-               when (B.null end_on) $
+               when (T.null end_on) $
                   fsInBlockComment .= True
 
                return before_begin
@@ -203,7 +203,7 @@ removeBlockComment line = do
 -- |line|, delete up to and including the end-comment, leave the in block
 -- comment state, and return the remaining line.
 --
-possiblyEndBlockComment :: B.ByteString -> State FileState B.ByteString
+possiblyEndBlockComment :: T.Text -> State FileState T.Text
 possiblyEndBlockComment line = do
    in_block_comment <- use fsInBlockComment
 
@@ -215,13 +215,13 @@ possiblyEndBlockComment line = do
          -- fromJust...
          (begin_c, end_c) <- liftM fromJust $ use (fsLanguage . lBlockComment)
 
-         let (before_end, end_on)   = B.breakSubstring end_c   line
-         let (_,          begin_on) = B.breakSubstring begin_c before_end
+         let (before_end, end_on)   = T.breakOn end_c   line
+         let (_,          begin_on) = T.breakOn begin_c before_end
 
-         if (not . B.null) end_on && B.null begin_on
+         if (not . T.null) end_on && T.null begin_on
             then do
                fsInBlockComment .= False
-               return $ B.drop (B.length end_c) end_on
+               return $ T.drop (T.length end_c) end_on
             else return line
       else return line
 
@@ -230,13 +230,13 @@ possiblyEndBlockComment line = do
 -- Returns Nothing if the line is boiler plate, or Just |line| if it isn't.
 -- Requires |line| to be stripped.
 --
-removeBoilerPlate :: B.ByteString -> State FileState (Maybe B.ByteString)
+removeBoilerPlate :: T.Text -> State FileState (Maybe T.Text)
 removeBoilerPlate line =
    -- Hacky unintuitive spot for filtering null lines. This is better than
    -- having "null" explicitly be boiler plate in each language info, and
    -- works here because |line| is stripped, but there is probably a better
    -- spot for it.
-   if B.null line
+   if T.null line
       then return Nothing
       else do
          line_filters <- use $ fsLanguage . lBoilerPlate
@@ -285,9 +285,9 @@ parseOptions args =
 makeOptions :: [(Options -> Options)] -> Options
 makeOptions = foldl (flip id) defaultOptions
 
-totalLineCounts :: [LineCountInfo] -> Map.Map B.ByteString Int
+totalLineCounts :: [LineCountInfo] -> Map.Map T.Text Int
 totalLineCounts = foldr totalLineCounts_ Map.empty
-   where totalLineCounts_ :: LineCountInfo -> Map.Map B.ByteString Int -> Map.Map B.ByteString Int
+   where totalLineCounts_ :: LineCountInfo -> Map.Map T.Text Int -> Map.Map T.Text Int
          totalLineCounts_ (file_name, line_count) acc =
             let language = fromJust $ Map.lookup (takeExtension_ file_name) langInfoMap -- TODO: fromJust -_-
             in adjustWithDefault line_count (+ line_count) (language ^. lName) acc
@@ -310,4 +310,4 @@ main = do
       putStrLn "----------"
 
    forM_ aggr_counts $ \(s, n) -> putStr $
-      printf "Total %s: %d lines (%.2f%%)\n" (B.unpack s) n (100 * (fromIntegral n :: Float) / (fromIntegral total_counts :: Float))
+      printf "Total %s: %d lines (%.2f%%)\n" (T.unpack s) n (100 * (fromIntegral n :: Float) / (fromIntegral total_counts :: Float))

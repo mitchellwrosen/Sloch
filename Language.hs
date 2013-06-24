@@ -4,19 +4,19 @@ module Language where
 
 import Control.Lens ((&), (.~), (%~), makeLenses)
 
-import qualified Data.ByteString.Char8 as B
-import qualified Data.Map              as Map
+import qualified Data.Map  as Map
+import qualified Data.Text as T
 
 -- A LineFilter is run on each line after it has been stripped of
 -- whitespace. Each matching line is deleted.
 --
-type LineFilter = B.ByteString -> Bool
+type LineFilter = T.Text -> Bool
 
 data Language =
-   Language { _lName           :: B.ByteString                       -- Name of the language
-            , _lLineComment    :: B.ByteString                       -- Line comment delimiter
-            , _lBlockComment   :: Maybe (B.ByteString, B.ByteString) -- Block comment delimiters, if they exist
-            , _lBoilerPlate    :: [LineFilter]                       -- Boiler plate lines that don't "count" as real code
+   Language { _lName           :: T.Text                 -- Name of the language
+            , _lLineComment    :: T.Text                 -- Line comment delimiter
+            , _lBlockComment   :: Maybe (T.Text, T.Text) -- Block comment delimiters, if they exist
+            , _lBoilerPlate    :: [LineFilter]           -- Boiler plate lines that don't "count" as real code
             }
 
 makeLenses ''Language
@@ -60,7 +60,7 @@ cLikeLanguage = Language
 cLanguage :: Language
 cLanguage = cLikeLanguage &
    lName .~ "C" &
-   lBoilerPlate %~ (B.isPrefixOf "#include" :)
+   lBoilerPlate %~ (T.isPrefixOf "#include" :)
 
 cHeaderLanguage :: Language
 cHeaderLanguage = cLanguage & lName .~ "C/C++ Header"
@@ -71,8 +71,8 @@ cppLanguage = cLanguage & lName .~ "C++"
 javaLanguage :: Language
 javaLanguage = cLikeLanguage &
    lName .~ "Java" &
-   lBoilerPlate %~ (B.isPrefixOf "import "  :) .
-                   (B.isPrefixOf "package " :)
+   lBoilerPlate %~ (T.isPrefixOf "import "  :) .
+                   (T.isPrefixOf "package " :)
 
 javascriptLanguage :: Language
 javascriptLanguage = cLikeLanguage & lName .~ "Javascript"
@@ -80,8 +80,8 @@ javascriptLanguage = cLikeLanguage & lName .~ "Javascript"
 goLanguage :: Language
 goLanguage = cLikeLanguage &
    lName .~ "Go" &
-   lBoilerPlate %~ (B.isPrefixOf "import "  :) .
-                   (B.isPrefixOf "package " :) .
+   lBoilerPlate %~ (T.isPrefixOf "import "  :) .
+                   (T.isPrefixOf "package " :) .
                    (is ")" :)
 
 groovyLanguage :: Language
@@ -92,9 +92,9 @@ haskellLanguage = Language
    { _lName         = "Haskell"
    , _lLineComment  = "--"
    , _lBlockComment = Just ("{-", "-}")
-   , _lBoilerPlate  = [ B.isPrefixOf "import "
-                      , B.isPrefixOf "module "
-                      , B.isInfixOf   "::" -- type annotations
+   , _lBoilerPlate  = [ T.isPrefixOf "import "
+                      , T.isPrefixOf "module "
+                      , T.isInfixOf   "::" -- type annotations
                       , is "do"
                       , is "in"
                       , is "let"
@@ -111,8 +111,8 @@ pythonLanguage = Language
    { _lName         = "Python"
    , _lLineComment  = "#"
    , _lBlockComment = Just ("'''", "'''")
-   , _lBoilerPlate  = [ B.isPrefixOf "import "
-                      , B.isPrefixOf "from "   -- from Foo import Bar
+   , _lBoilerPlate  = [ T.isPrefixOf "import "
+                      , T.isPrefixOf "from "   -- from Foo import Bar
                       ]
    }
 
@@ -121,9 +121,9 @@ rubyLanguage = Language
    { _lName         = "Ruby"
    , _lLineComment  = "#"
    , _lBlockComment = Just ("=begin", "=end")
-   , _lBoilerPlate  = [ B.isPrefixOf "load "
-                      , B.isPrefixOf "require "
-                      , B.isPrefixOf "require_relative "
+   , _lBoilerPlate  = [ T.isPrefixOf "load "
+                      , T.isPrefixOf "require "
+                      , T.isPrefixOf "require_relative "
                       , is "end "
                       , is "{"
                       , is "}"

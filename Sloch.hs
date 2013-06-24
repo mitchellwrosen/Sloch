@@ -10,10 +10,11 @@ import MapUtils
 
 import Control.Applicative ((<*>), pure)
 import Control.Lens ((.=), (%=), (^.), _2, foldrOf, makeLenses, set, traverse, use)
-import Control.Monad.Identity -- TODO
-import Control.Exception -- TODO
-import Control.Monad.State    -- TODO
-import Control.Monad.Writer   -- TODO
+import Control.Exception (throw, try)
+import Control.Monad (forM, forM_, liftM, unless, when)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.State (State, execState)
+import Control.Monad.Writer (WriterT, runWriterT, tell)
 import Data.List (sortBy)
 import Data.Maybe (fromJust, isJust)
 import Data.Ord (comparing)

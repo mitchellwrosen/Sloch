@@ -16,12 +16,12 @@ import Control.Monad.Writer
 import Data.List (sortBy)
 import Data.Maybe (fromJust, isJust)
 import Data.Ord (comparing)
-import Data.String.Utils (strip)
 import System.Console.GetOpt (ArgDescr(..), ArgOrder(..), OptDescr(..), getOpt)
-import System.Directory (getDirectoryContents, doesDirectoryExist, doesFileExist)
+import System.Directory (getDirectoryContents)
 import System.Environment (getArgs)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStr, stderr)
+import System.Posix.Files (fileExist, getSymbolicLinkStatus, isDirectory, isRegularFile)
 import Text.Printf (printf)
 
 {-import qualified Data.ByteString.Char8 as B-}
@@ -67,12 +67,16 @@ initFileState lang_info contents =
 --
 sloch :: FilePath -> Sloch ()
 sloch target = do
-   file_exists      <- liftIO $ doesFileExist      target
-   directory_exists <- liftIO $ doesDirectoryExist target
+   file_exists <- liftIO $ fileExist target
 
-   if | file_exists      -> slochFile target
-      | directory_exists -> slochDirectory target
-      | otherwise        -> liftIO $ hPutStrLn stderr $ "'" ++ target ++ "' does not exist"
+   if file_exists
+      then do
+         file_status <- liftIO $ getSymbolicLinkStatus target
+
+         if | isRegularFile file_status -> slochFile      target
+            | isDirectory   file_status -> slochDirectory target
+            | otherwise                 -> return ()
+      else liftIO $ hPutStr stderr (printf "File '%s' does not exist\n" target)
 
 -- slochFile target
 --
@@ -127,7 +131,7 @@ filterContents_ :: State FileState ()
 filterContents_ = do
    file_contents <- use fsContents
    case file_contents of
-      [] -> return ()
+      []     -> return ()
       (x:xs) -> do
          fsContents .= xs    -- TODO: This vs. %= tail
 
@@ -142,8 +146,9 @@ filterContents_ = do
                           removeLineComment       >>=
                           removeBoilerPlate . T.strip -- strip before matching boiler plate
 
+            -- FIXME: This can probably be rewritten to not use isJust/fromJust
             when (isJust maybe_line) $
-               fsFilteredContents %= (fromJust maybe_line :)  -- TODO: fromJust -_-
+               fsFilteredContents %= (fromJust maybe_line :)
 
          filterContents_
 

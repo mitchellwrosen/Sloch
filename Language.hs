@@ -60,7 +60,8 @@ cLikeLanguage = Language
 cLanguage :: Language
 cLanguage = cLikeLanguage &
    lName .~ "C" &
-   lBoilerPlate %~ (T.isPrefixOf "#include" :)
+   lBoilerPlate %~ (T.isPrefixOf "#include" :) .
+                   (is "#ENDIF" . T.toUpper :)
 
 cHeaderLanguage :: Language
 cHeaderLanguage = cLanguage & lName .~ "C/C++ Header"
@@ -95,6 +96,7 @@ haskellLanguage = Language
    , _lBoilerPlate  = [ T.isPrefixOf "import "
                       , T.isPrefixOf "module "
                       , T.isInfixOf   "::" -- type annotations
+                      , is "#ENDIF" . T.toUpper
                       , is "do"
                       , is "in"
                       , is "let"
@@ -103,6 +105,8 @@ haskellLanguage = Language
                       , is "}"
                       , is "["
                       , is "]"
+                      , is "("
+                      , is ")"
                       ]
    }
 

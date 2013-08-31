@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiWayIf, OverloadedStrings, ScopedTypeVariables, TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, TemplateHaskell #-}
 
 module Main where
 
@@ -72,14 +72,13 @@ sloch :: FilePath -> Sloch ()
 sloch target = do
    file_exists <- liftIO $ fileExist target
 
-   if file_exists
-      then do
-         file_status <- liftIO $ getSymbolicLinkStatus target
+   if file_exists then do
+        file_status <- liftIO $ getSymbolicLinkStatus target
 
-         if | isRegularFile file_status -> slochFile      target
-            | isDirectory   file_status -> slochDirectory target
-            | otherwise                 -> return ()
-      else liftIO $ hPutStr stderr (printf "File '%s' does not exist\n" target)
+        if isRegularFile file_status then slochFile target
+        else if isDirectory file_status then slochDirectory target
+        else return ()
+    else liftIO $ hPutStr stderr (printf "File '%s' does not exist\n" target)
 
 -- slochFile target
 --

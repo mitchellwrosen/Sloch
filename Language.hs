@@ -1,147 +1,73 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell #-}
+module Language
+    ( Language(..)
+    , isLineComment
+    , isBeginBlockComment
+    , isEndBlockComment
+    ) where
 
-module Language where
+import Data.List (isInfixOf, isPrefixOf)
+import System.FilePath.Posix (takeExtension)
 
-import Control.Lens ((&), (.~), (%~), makeLenses)
+data Language = C
+              | Cpp
+              | Java
+              | Javascript
+              | Go
+              | Groovy
+              | Haskell
+              | Python
+              | Ruby
+              | Shell
 
-import qualified Data.Map  as Map
-import qualified Data.Text as T
+isLineComment :: Language -> String -> Bool
+isLineComment C          = isPrefixOf "//"
+isLineComment Cpp        = isPrefixOf "//"
+isLineComment Java       = isPrefixOf "//"
+isLineComment Javascript = isPrefixOf "//"
+isLineComment Go         = isPrefixOf "//"
+isLineComment Groovy     = isPrefixOf "//"
+isLineComment Haskell    = isPrefixOf "--"
+isLineComment Python     = isPrefixOf "#"
+isLineComment Ruby       = isPrefixOf "#"
+isLineComment Shell      = isPrefixOf "#"
 
--- A LineFilter is run on each line after it has been stripped of
--- whitespace. Each matching line is deleted.
---
-type LineFilter = T.Text -> Bool
+isBeginBlockComment :: Language -> String -> Bool
+isBeginBlockComment C          = isPrefixOf "/*"
+isBeginBlockComment Cpp        = isPrefixOf "/*"
+isBeginBlockComment Java       = isPrefixOf "/*"
+isBeginBlockComment Javascript = isPrefixOf "/*"
+isBeginBlockComment Go         = isPrefixOf "/*"
+isBeginBlockComment Groovy     = isPrefixOf "/*"
+isBeginBlockComment Haskell    = isPrefixOf "{-"
+isBeginBlockComment Python     = isPrefixOf "'''"
+isBeginBlockComment Ruby       = isPrefixOf "=begin"
+isBeginBlockComment Shell      = const False
 
-data Language =
-   Language { _lName           :: T.Text                 -- Name of the language
-            , _lLineComment    :: T.Text                 -- Line comment delimiter
-            , _lBlockComment   :: Maybe (T.Text, T.Text) -- Block comment delimiters, if they exist
-            , _lBoilerPlate    :: [LineFilter]           -- Boiler plate lines that don't "count" as real code
-            }
+isEndBlockComment :: Language -> String -> Bool
+isEndBlockComment C          = isInfixOf "*/"
+isEndBlockComment Cpp        = isInfixOf "*/"
+isEndBlockComment Java       = isInfixOf "*/"
+isEndBlockComment Javascript = isInfixOf "*/"
+isEndBlockComment Go         = isInfixOf "*/"
+isEndBlockComment Groovy     = isInfixOf "*/"
+isEndBlockComment Haskell    = isInfixOf "-}"
+isEndBlockComment Python     = isInfixOf "'''"
+isEndBlockComment Ruby       = isInfixOf "=end"
+isEndBlockComment Shell      = const False
 
-makeLenses ''Language
-
-is :: Eq a => a -> a -> Bool
-is = (==)
-
--- langInfoMap
---
--- Map from file extension to Language, representing all filetypes Sloch
--- knows about.
---
-langInfoMap :: Map.Map String Language
-langInfoMap = Map.fromList [ ("c",      cLanguage)
-                           , ("cc",     cppLanguage)
-                           , ("cpp",    cppLanguage)
-                           , ("java",   javaLanguage)
-                           , ("js",     javascriptLanguage)
-                           , ("go",     goLanguage)
-                           , ("groovy", groovyLanguage)
-                           , ("h",      cHeaderLanguage)
-                           , ("hs",     haskellLanguage)
-                           , ("py",     pythonLanguage)
-                           , ("rb",     rubyLanguage)
-                           , ("sh",     shellLanguage)
-                           ]
-
--- Template for languages with similar syntax to C.
-cLikeLanguage :: Language
-cLikeLanguage = Language
-   { _lName         = "C-like"
-   , _lLineComment  = "//"
-   , _lBlockComment = Just ("/*", "*/")
-   , _lBoilerPlate  = [ is "{"
-                      , is "}"
-                      , is ";"
-                      ]
-   }
-
-
-cLanguage :: Language
-cLanguage = cLikeLanguage &
-   lName .~ "C" &
-   lBoilerPlate %~ (T.isPrefixOf "#include" :) .
-                   (is "#ENDIF" . T.toUpper :)
-
-cHeaderLanguage :: Language
-cHeaderLanguage = cLanguage & lName .~ "C/C++ Header"
-
-cppLanguage :: Language
-cppLanguage = cLanguage & lName .~ "C++"
-
-javaLanguage :: Language
-javaLanguage = cLikeLanguage &
-   lName .~ "Java" &
-   lBoilerPlate %~ (T.isPrefixOf "import "  :) .
-                   (T.isPrefixOf "package " :)
-
-javascriptLanguage :: Language
-javascriptLanguage = cLikeLanguage & lName .~ "Javascript"
-
-goLanguage :: Language
-goLanguage = cLikeLanguage &
-   lName .~ "Go" &
-   lBoilerPlate %~ (T.isPrefixOf "import "  :) .
-                   (T.isPrefixOf "package " :) .
-                   (is ")" :)
-
-groovyLanguage :: Language
-groovyLanguage = javaLanguage & lName .~ "Groovy"
-
-haskellLanguage :: Language
-haskellLanguage = Language
-   { _lName         = "Haskell"
-   , _lLineComment  = "--"
-   , _lBlockComment = Just ("{-", "-}")
-   , _lBoilerPlate  = [ T.isPrefixOf "import "
-                      , T.isPrefixOf "module "
-                      , T.isInfixOf   "::" -- type annotations
-                      , is "#ENDIF" . T.toUpper
-                      , is "do"
-                      , is "in"
-                      , is "let"
-                      , is "where"
-                      , is "{"
-                      , is "}"
-                      , is "["
-                      , is "]"
-                      , is "("
-                      , is ")"
-                      ]
-   }
-
-pythonLanguage :: Language
-pythonLanguage = Language
-   { _lName         = "Python"
-   , _lLineComment  = "#"
-   , _lBlockComment = Just ("'''", "'''")
-   , _lBoilerPlate  = [ T.isPrefixOf "import "
-                      , T.isPrefixOf "from "   -- from Foo import Bar
-                      ]
-   }
-
-rubyLanguage :: Language
-rubyLanguage = Language
-   { _lName         = "Ruby"
-   , _lLineComment  = "#"
-   , _lBlockComment = Just ("=begin", "=end")
-   , _lBoilerPlate  = [ T.isPrefixOf "load "
-                      , T.isPrefixOf "require "
-                      , T.isPrefixOf "require_relative "
-                      , is "end "
-                      , is "{"
-                      , is "}"
-                      ]
-   }
-
-shellLanguage :: Language
-shellLanguage = Language
-   { _lName         = "Shell script"
-   , _lLineComment  = "#"
-   , _lBlockComment = Nothing
-   , _lBoilerPlate  = [ is "do"
-                      , is "done"
-                      , is "esac"
-                      , is "fi"
-                      ]
-   }
+language :: FilePath -> Maybe Language
+language = language' . takeExtension
+  where
+    language' :: String -> Maybe Language
+    language' ".c"      = Just C
+    language' ".cc"     = Just Cpp
+    language' ".cpp"    = Just Cpp
+    language' ".java"   = Just Java
+    language' ".js"     = Just Javascript
+    language' ".go"     = Just Go
+    language' ".groovy" = Just Groovy
+    language' ".hs"     = Just Haskell
+    language' ".py"     = Just Python
+    language' ".rb"     = Just Ruby
+    language' ".sh"     = Just Shell
+    language' _         = Nothing

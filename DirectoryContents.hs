@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings, RankNTypes #-}
 
-module Foo
+module DirectoryContents
     ( getDirectoryContents
     , getRecursiveDirectoryContents
     ) where
@@ -16,9 +16,7 @@ import System.Posix.Files (getFileStatus, isDirectory)
 import qualified Pipes.Prelude as P
 import qualified System.Directory as D
 
-ifM :: Monad m => m Bool -> m a -> m a -> m a
-ifM mb a1 a2 = mb >>= \b -> if b then a1 else a2
-
+-- | Enumerate the specified directory, excluding "." and ".."
 getDirectoryContents :: FilePath -> Producer' FilePath IO ()
 getDirectoryContents file_path = lift contents >>= each
   where
@@ -28,6 +26,7 @@ getDirectoryContents file_path = lift contents >>= each
     filterThisAndParent :: [FilePath] -> [FilePath]
     filterThisAndParent = filter (`notElem` [".", ".."])
 
+-- | Recursively enumerate the specified directory, excluding "." and ".." from subdirectory.
 getRecursiveDirectoryContents :: FilePath -> Producer' FilePath IO ()
 getRecursiveDirectoryContents file_path =
     getDirectoryContents file_path >->
@@ -40,3 +39,6 @@ getRecursiveDirectoryContents file_path =
         ifM (isDirectory <$> lift (getFileStatus file_path))
             (getRecursiveDirectoryContents file_path)
             (yield file_path)
+
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM mb a1 a2 = mb >>= \b -> if b then a1 else a2

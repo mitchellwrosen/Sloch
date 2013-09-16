@@ -3,6 +3,7 @@ module Language
     , isLineComment
     , isBeginBlockComment
     , isEndBlockComment
+    , language
     ) where
 
 import Data.List (isInfixOf, isPrefixOf)

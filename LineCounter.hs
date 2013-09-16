@@ -7,11 +7,12 @@ import Control.Monad.Trans.State.Strict (StateT)
 import Control.Lens ((^.), (.=), (%=), makeLenses, use)
 import Data.Char (isSpace)
 import Pipes
-import Pipes.Prelude (map)
 import Pipes.Lift (execStateP)
 import Pipes.Safe (runSafeT)
 import Pipes.Safe.Prelude (readFile)
 import Prelude hiding (readFile, map)
+
+import qualified Pipes.Prelude as P
 
 import Language
 
@@ -34,8 +35,10 @@ countLines file_path lang = do
         runSafeT $
             runEffect $
                 execStateP initLineCount $
-                    readFile file_path >->
-                    map trim           >->
+                    readFile file_path                  >->
+                    P.map trim                          >->
+                    P.filter (not . null)               >->
+                    P.filter (not . isLineComment lang) >->
                     hoist (hoist lift) (countLinesConsumer lang)
     return $ line_count ^. lineCount
 
@@ -44,7 +47,6 @@ countLinesConsumer lang = forever $ await >>= count lang
 
 count :: Language -> String -> Consumer' String (StateT LineCount IO) ()
 count lang line
-    | isLineComment lang line = return ()
     -- isEnd must come before isBegin, so that inline block comments function correctly.
     -- Otherwise, there must be an "if isEnd" inside the "isBegin" body.
     | isEndBlockComment   lang line = inComment .= False

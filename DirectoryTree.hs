@@ -5,6 +5,7 @@ module DirectoryTree
     , DirectoryTree
     , Dirent(..)
     , makeTree
+    , treesAtDepth
     ) where
 
 import Control.Applicative ((<$>))
@@ -78,3 +79,15 @@ appendChild (fp, xs) t = (fp, t:xs)
 
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM mb a1 a2 = mb >>= \b -> if b then a1 else a2
+
+-- Transform a DirectoryTree into a [DirectoryTree], representing the trees at depth n from the root tree. A depth of
+-- one will result in a singleton list containing the root tree.
+treesAtDepth :: Int -> DirectoryTree -> [DirectoryTree]
+treesAtDepth 0 t = [t]
+treesAtDepth n (_, dirents) = concatMap (treesAtDepth' (n-1)) dirents
+  where
+    treesAtDepth' :: Int -> Dirent -> [DirectoryTree]
+    treesAtDepth' 0 (DirentDir (path, cs)) = [(path, cs)]
+    treesAtDepth' 0 (DirentFile path) = []
+    treesAtDepth' n (DirentDir (_, cs)) = concatMap (treesAtDepth' (n-1)) cs
+    treesAtDepth' n (DirentFile path) = []

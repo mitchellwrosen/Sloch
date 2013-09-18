@@ -19,6 +19,7 @@ data Language = C
               | Python
               | Ruby
               | Shell
+              deriving (Eq, Ord, Show)
 
 isLineComment :: Language -> String -> Bool
 isLineComment C          = isPrefixOf "//"

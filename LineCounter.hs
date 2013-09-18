@@ -2,7 +2,7 @@
 
 module LineCounter (countLines) where
 
-import Control.Monad (forever)
+import Control.Monad (forever, unless)
 import Control.Monad.Trans.State.Strict (StateT)
 import Control.Lens ((^.), (.=), (%=), makeLenses, use)
 import Data.Char (isSpace)
@@ -57,4 +57,4 @@ trim :: String -> String
 trim = dropWhile isSpace
 
 unlessM :: Monad m => m Bool -> m () -> m ()
-unlessM mb action = mb >>= \b -> if b then return () else action
+unlessM mb action = mb >>= flip unless action

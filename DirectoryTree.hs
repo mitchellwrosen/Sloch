@@ -10,6 +10,7 @@ module DirectoryTree
 
 import Control.Applicative ((<$>))
 import Control.Monad (filterM, forever)
+import Data.List (isPrefixOf)
 import Data.Map (Map)
 import Data.Monoid ((<>))
 import LineCounter (countLines)
@@ -31,8 +32,9 @@ data Dirent = DirentDir Directory
             deriving Show
 
 -- | Build a DirectoryTree from the specified directory, excluding ".", "..", and symlinks from each directory.
-makeTree :: FilePath -> IO DirectoryTree
-makeTree file_path = foldM step begin contents
+-- Optionally include dotfiles.
+makeTree :: FilePath -> Bool -> IO DirectoryTree
+makeTree file_path include_dotfiles = foldM step begin contents
   where
     step :: DirectoryTree -> FilePath -> IO DirectoryTree
     step tree file_path =
@@ -42,31 +44,36 @@ makeTree file_path = foldM step begin contents
 
     appendDir :: Directory -> FilePath -> IO Directory
     appendDir dir file_path = do
-        child <- makeTree file_path
+        child <- makeTree file_path include_dotfiles
         return $ appendChild dir (DirentDir child)
 
     begin :: IO DirectoryTree
     begin = return (file_path, [])
 
     contents :: Producer FilePath IO ()
-    contents = getDirectoryContents file_path
+    contents = getDirectoryContents file_path include_dotfiles
 
 -- Like Pipes.Prelude.foldM, but no explicit end step (simply return).
 foldM :: Monad m => (b -> a -> m b) -> m b -> Producer a m () -> m b
 foldM step begin = P.foldM step begin return
 
--- | Enumerate the specified directory, excluding ".", "..", and symlinks.
-getDirectoryContents :: FilePath -> Producer' FilePath IO ()
-getDirectoryContents file_path = lift contents >>= each
+-- | Enumerate the specified directory, excluding ".", "..", and symlinks. Optionally include dotfiles.
+getDirectoryContents :: FilePath -> Bool -> Producer' FilePath IO ()
+getDirectoryContents file_path include_dotfiles = lift contents >>= each
   where
     -- This order is important. Filter "." and ".." before prepending the directory name, which is necessary before
     -- checking if the file is a symlink (need entire path, of course).
     contents :: IO [FilePath]
     contents = filteredAbsolutePaths >>= filterSymlinks
 
-    -- "Filtered", meaning "." and ".." are filtered.
+    -- Create absolute paths after ".", "..", and possibly dotfiles have been filtered.
     filteredAbsolutePaths :: IO [FilePath]
-    filteredAbsolutePaths = map (file_path </>) . filter (`notElem` [".",".."]) <$> D.getDirectoryContents file_path
+    filteredAbsolutePaths =
+        map (file_path </>) . possiblyFilterDotfiles . filter (`notElem` [".",".."]) <$>
+            D.getDirectoryContents file_path
+
+    possiblyFilterDotfiles :: [FilePath] -> [FilePath]
+    possiblyFilterDotfiles xs = let f = if include_dotfiles then id else filter (not . isPrefixOf ".") in f xs
 
     filterSymlinks :: [FilePath] -> IO [FilePath]
     filterSymlinks = filterM $ fmap not . isSymbolicLink'

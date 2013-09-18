@@ -6,6 +6,7 @@ import Control.Applicative ((<$>))
 import Control.Monad (unless)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.State (StateT, execStateT, modify, put)
+import Control.Monad.Trans.Reader (ReaderT)
 import Data.Map (Map)
 
 import qualified Data.Map      as M
@@ -13,14 +14,17 @@ import qualified Data.Map      as M
 import DirectoryTree (Dirent(..), DirectoryTree, makeTree, treesAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
+import Options (Options(..))
 
 -- A summary of the source-lines-of-code count, represented as two maps: the outer, a directory name to counts, and the
 -- inner, a map from language type to number of lines.
 type Sloch = Map FilePath (Map Language Int)
 
-sloch :: FilePath -> Int -> IO Sloch
-sloch path depth = do
-    trees <- treesAtDepth depth <$> makeTree path
+sloch :: FilePath -> Options -> IO Sloch
+sloch path opts = do
+    let depth            = optDepth opts
+        include_dotfiles = optIncludeDotfiles opts
+    trees <- treesAtDepth depth <$> makeTree path include_dotfiles
     execStateT (mapM_ sloch' trees) M.empty
 
 -- | "Outer" lines count, which builds up a mapping from directory name -> inner lines count. Only adds an entry if

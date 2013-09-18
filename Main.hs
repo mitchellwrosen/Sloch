@@ -2,11 +2,11 @@ module Main where
 
 import System.Environment (getArgs)
 
+import Options (parseOptions)
 import Sloch (sloch)
 
 main :: IO ()
 main = do
-    [dir, depth] <- getArgs
-    s <- sloch dir (read depth)
+    (opts, [dir]) <- parseOptions =<< getArgs
+    s <- sloch dir opts
     print s
-

@@ -53,7 +53,7 @@ makeTree file_path include_dotfiles = foldM step begin contents
     contents :: Producer FilePath IO ()
     contents = getDirectoryContents file_path include_dotfiles
 
--- Like Pipes.Prelude.foldM, but no explicit end step (simply return).
+-- | Like Pipes.Prelude.foldM, but no explicit end step (simply return).
 foldM :: Monad m => (b -> a -> m b) -> m b -> Producer a m () -> m b
 foldM step begin = P.foldM step begin return
 
@@ -87,8 +87,8 @@ appendChild (fp, xs) t = (fp, t:xs)
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM mb a1 a2 = mb >>= \b -> if b then a1 else a2
 
--- Transform a DirectoryTree into a [DirectoryTree], representing the trees at depth n from the root tree. A depth of
--- one will result in a singleton list containing the root tree.
+-- | Transform a DirectoryTree into a [DirectoryTree], representing the trees at depth n from the root tree. A depth of
+-- zero will result in a singleton list containing the root tree.
 treesAtDepth :: Int -> DirectoryTree -> [DirectoryTree]
 treesAtDepth 0 t = [t]
 treesAtDepth n (_, dirents) = concatMap (treesAtDepth' (n-1)) dirents

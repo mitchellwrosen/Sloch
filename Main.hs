@@ -2,24 +2,19 @@ module Main where
 
 import Pipes (each)
 import System.Environment (getArgs)
-import System.Process
 
-import Options (Options(..), parseOptions)
+import Cli (Cli(..), parseCli)
 import Sloch (slochFiles, slochHierarchy)
 
 main :: IO ()
-main = do
-    (opts, nonopts) <- parseOptions =<< getArgs
+main = parseCli >>= main'
 
-    let depth            = optDepth opts
-        include_dotfiles = optIncludeDotfiles opts
-        git              = optGit opts
-
-    if git
+main' :: Cli -> IO ()
+main' cli =
+    if cliGit cli
         then gitSloch
         else do
-            let [dir] = nonopts
-            s <- slochHierarchy dir depth include_dotfiles
+            s <- slochHierarchy (cliDir cli) (cliDepth cli) (cliIncludeDotfiles cli)
             print s
 
 gitSloch :: IO ()

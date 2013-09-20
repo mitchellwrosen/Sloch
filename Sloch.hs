@@ -2,6 +2,8 @@
 
 module Sloch
     ( Sloch
+    , showSloch
+    , showSlochHierarchy
     , SlochHierarchy
     , slochHierarchy
     , slochFiles
@@ -13,7 +15,9 @@ import Control.Monad.Morph (hoist)
 import Control.Monad.Trans (lift, liftIO)
 import Control.Monad.Trans.State.Strict (StateT, execStateT, modify, put)
 import Control.Monad.Trans.Reader (ReaderT)
+import Data.List (sort, sortBy)
 import Data.Map (Map)
+import Data.Monoid ((<>))
 import Pipes (Consumer', Effect, Pipe, Producer', (>->), await, each, runEffect, yield)
 import Pipes.Lift (execStateP)
 
@@ -23,14 +27,28 @@ import qualified Pipes.Prelude as P
 import DirectoryTree (Dirent(..), DirectoryTree, makeTree, treesAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
-import Options (Options(..))
 
 -- A simple summary of the source-lines-of-code count, by language.
 type Sloch = Map Language Int
 
+showSloch :: Sloch -> String
+showSloch = unlines . map display . sortBy compareSloc . M.toList
+  where
+    compareSloc :: (Language, Int) -> (Language, Int) -> Ordering
+    compareSloc (lang1, n1) (lang2, n2) = n2 `compare` n1 <> lang1 `compare` lang2
+
+    display :: (Language, Int) -> String
+    display (lang, n) = show lang ++ "   " ++ show n
+
 -- A summary of the source-lines-of-code count, represented as two maps: the outer, a directory name to counts, and the
 -- inner, a map from language type to number of lines.
 type SlochHierarchy = Map FilePath Sloch
+
+showSlochHierarchy :: SlochHierarchy -> String
+showSlochHierarchy = unlines . concatMap display . sort . M.toList
+  where
+    display :: (FilePath, Sloch) -> [String]
+    display (path, s) = path : map ("   " ++) (lines $ showSloch s)
 
 slochHierarchy :: FilePath -> Int -> Bool -> IO SlochHierarchy
 slochHierarchy path depth include_dotfiles = do
@@ -44,7 +62,7 @@ execStateEffect init_state effect = runEffect $ execStateP init_state $ effect
 -- | "Outer" lines count, which builds up a mapping from directory name -> inner lines count. Only adds an entry if
 -- there were any lines counted.
 slochHierarchy' :: Consumer' DirectoryTree (StateT SlochHierarchy IO) ()
-slochHierarchy' = do
+slochHierarchy' = forever $ do
     (path, children) <- await
     lang_to_count_map <-
         liftIO $

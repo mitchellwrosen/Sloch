@@ -18,11 +18,10 @@ import Pipes
 import System.FilePath ((</>))
 import System.Posix.Files (getFileStatus, getSymbolicLinkStatus, isDirectory, isSymbolicLink)
 
+import Prelude hiding (appendFile)
+
 import qualified Pipes.Prelude as P
 import qualified System.Directory as D
-
-import Prelude hiding (appendFile)
-import Debug.Trace
 
 type DirectoryTree = Directory
 type Directory = (FilePath, [Dirent])

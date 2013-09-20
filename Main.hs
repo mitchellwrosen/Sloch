@@ -1,10 +1,11 @@
 module Main where
 
 import Pipes (each)
+import System.Process (readProcess)
 import System.Environment (getArgs)
 
 import Cli (Cli(..), parseCli)
-import Sloch (slochFiles, slochHierarchy)
+import Sloch (showSloch, showSlochHierarchy, slochFiles, slochHierarchy)
 
 main :: IO ()
 main = parseCli >>= main'
@@ -15,10 +16,10 @@ main' cli =
         then gitSloch
         else do
             s <- slochHierarchy (cliDir cli) (cliDepth cli) (cliIncludeDotfiles cli)
-            print s
+            putStr $ showSlochHierarchy s
 
 gitSloch :: IO ()
 gitSloch = do
     files <- readProcess "git" ["ls-files"] ""
     s <- slochFiles $ each (lines files)
-    print s
+    putStr $ showSloch s

@@ -1,5 +1,12 @@
+{- Command line interface for Sloch. Exports a datatype consisting of all command line options/arguments, and a function
+ - to retrieve it in IO.
+ - -}
+
 module Cli
     ( Cli(..)
+    , OptGit
+    , OptIncludeDotfiles
+    , OptVerbose
     , parseCli
     ) where
 
@@ -10,11 +17,16 @@ import Options.Applicative
     )
 import Options.Applicative.Types (ParserPrefs) -- Options.Applicative, y u no export this?
 
+type OptIncludeDotfiles = Bool
+type OptGit             = Bool
+type OptVerbose         = Bool
+
 data Cli = Cli
-    { cliDepth :: Int
-    , cliIncludeDotfiles :: Bool
-    , cliGit :: Bool
-    , cliDir :: FilePath
+    { cliDepth           :: Int
+    , cliIncludeDotfiles :: OptIncludeDotfiles
+    , cliGit             :: OptGit
+    , cliVerbose         :: OptVerbose
+    , cliDir             :: FilePath
     }
 
 parseCli :: IO Cli
@@ -27,7 +39,11 @@ parseCli' :: ParserInfo Cli
 parseCli' = info (helper <*> cli) infoMod
   where
     cli :: Parser Cli
-    cli = Cli <$> depth <*> includeDotfiles <*> git <*> dir
+    cli = Cli <$> depth 
+              <*> includeDotfiles 
+              <*> git 
+              <*> verbose
+              <*> dir
 
     depth :: Parser Int
     depth = option $
@@ -38,16 +54,22 @@ parseCli' = info (helper <*> cli) infoMod
      <> metavar "DEPTH"
      <> showDefault
 
-    includeDotfiles :: Parser Bool
+    includeDotfiles :: Parser OptIncludeDotfiles
     includeDotfiles = switch $
         long "include-dotfiles"
      <> help "Include dotfiles"
 
-    git :: Parser Bool
+    git :: Parser OptGit
     git = switch $
         short 'g'
      <> long  "git"
      <> help  "Sloc this Git repository (ignores DIR). May be used anywhere inside the repository."
+
+    verbose :: Parser OptVerbose
+    verbose = switch $
+        short 'v'
+     <> long "verbose"
+     <> help "Print output verbosely."
 
     dir :: Parser FilePath
     dir = argument str $

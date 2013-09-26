@@ -13,8 +13,7 @@ import Control.Applicative ((<$>))
 import Control.Monad (forever, unless)
 import Control.Monad.Morph (hoist)
 import Control.Monad.Trans (lift, liftIO)
-import Control.Monad.Trans.State.Strict (StateT, execStateT, modify, put)
-import Control.Monad.Trans.Reader (ReaderT)
+import Control.Monad.Trans.State.Strict (StateT, modify)
 import Data.List (sort, sortBy)
 import Data.Map (Map)
 import Data.Monoid ((<>))
@@ -22,33 +21,43 @@ import Pipes (Consumer', Effect, Pipe, Producer', (>->), await, each, runEffect,
 import Pipes.Lift (execStateP)
 
 import qualified Data.Map      as M
-import qualified Pipes.Prelude as P
 
+import Cli (OptVerbose)
 import DirectoryTree (Dirent(..), DirectoryTree, makeTree, treesAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
 
 -- A simple summary of the source-lines-of-code count, by language.
-type Sloch = Map Language Int
+type Sloch = Map Language [(FilePath, Int)]
 
-showSloch :: Sloch -> String
-showSloch = unlines . map display . sortBy compareSloc . M.toList
+showSloch :: OptVerbose -> Sloch -> String
+showSloch verbose = unlines . map display . sortBy compareSloc . M.toList
   where
-    compareSloc :: (Language, Int) -> (Language, Int) -> Ordering
-    compareSloc (lang1, n1) (lang2, n2) = n2 `compare` n1 <> lang1 `compare` lang2
+    compareSloc :: (Language, [(FilePath, Int)]) -> (Language, [(FilePath, Int)]) -> Ordering
+    compareSloc (lang1, fs1) (lang2, fs2) = (sumSnds fs2) `compare` (sumSnds fs1) <> lang1 `compare` lang2
 
-    display :: (Language, Int) -> String
-    display (lang, n) = show lang ++ "   " ++ show n
+    display :: (Language, [(FilePath, Int)]) -> String
+    display (lang, fs) = unlines $
+        show lang : lineCounts
+      where
+        lineCounts :: [String]
+        lineCounts =
+            if verbose
+                then map (\(fp,n) -> "      " ++ show n ++ " " ++ fp) fs
+                else ["      " ++ show (sumSnds fs)]
+
+sumSnds :: Num b => [(a,b)] -> b
+sumSnds = foldr ((+) . snd) 0
 
 -- A summary of the source-lines-of-code count, represented as two maps: the outer, a directory name to counts, and the
 -- inner, a map from language type to number of lines.
 type SlochHierarchy = Map FilePath Sloch
 
-showSlochHierarchy :: SlochHierarchy -> String
-showSlochHierarchy = unlines . concatMap display . sort . M.toList
+showSlochHierarchy :: OptVerbose -> SlochHierarchy -> String
+showSlochHierarchy verbose = unlines . concatMap display . sort . M.toList
   where
     display :: (FilePath, Sloch) -> [String]
-    display (path, s) = path : map ("   " ++) (lines $ showSloch s)
+    display (path, s) = path : map ("   " ++) (lines $ showSloch verbose s)
 
 slochHierarchy :: FilePath -> Int -> Bool -> IO SlochHierarchy
 slochHierarchy path depth include_dotfiles = do
@@ -89,8 +98,11 @@ sloch = forever $ do
     file_path <- await
     whenMaybe (language file_path) $ \lang -> do
         n <- liftIO $ countLines file_path lang
-        lift $ modify $ M.insertWith (+) lang n
+        lift $ modify $ adjustWithDefault ((file_path, n):) lang [(file_path, n)]
 
 -- | Like when, but conditional on a Maybe being Just rather than a Bool being True.
 whenMaybe :: Monad m => Maybe a -> (a -> m ()) -> m ()
 whenMaybe = flip $ maybe $ return ()
+
+adjustWithDefault :: Ord k => (a -> a) -> k -> a -> Map k a -> Map k a
+adjustWithDefault f k a m = if M.member k m then M.adjust f k m else M.insert k a m

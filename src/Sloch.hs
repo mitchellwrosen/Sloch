@@ -20,7 +20,7 @@ import Data.Monoid ((<>))
 import Pipes (Consumer', Effect, Pipe, Producer', (>->), await, each, runEffect, yield)
 import Pipes.Lift (execStateP)
 
-import qualified Data.Map      as M
+import qualified Data.Map as M
 
 import Cli (OptVerbose)
 import DirectoryTree (Dirent(..), DirectoryTree, makeTree, treesAtDepth)
@@ -43,7 +43,7 @@ showSloch verbose = unlines . map display . sortBy compareSloc . M.toList
         lineCounts :: [String]
         lineCounts =
             if verbose
-                then map (\(fp,n) -> "      " ++ show n ++ " " ++ fp) fs
+                then map (\(fp,n) -> "      " ++ show n ++ " " ++ fp) (sortBy (\a b -> snd b `compare` snd a) fs)
                 else ["      " ++ show (sumSnds fs)]
 
 sumSnds :: Num b => [(a,b)] -> b

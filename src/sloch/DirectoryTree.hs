@@ -1,8 +1,7 @@
 {-# LANGUAGE RankNTypes, TupleSections #-}
 
 module DirectoryTree
-    ( Directory
-    , DirectoryTree
+    ( DirectoryTree
     , Dirent(..)
     , makeTree
     , treesAtDepth
@@ -15,7 +14,6 @@ import Data.List (isPrefixOf)
 import Data.Maybe (catMaybes)
 import Pipes
 import System.FilePath ((</>))
-import System.Posix.Files (getFileStatus, getSymbolicLinkStatus, isDirectory, isSymbolicLink)
 
 import Prelude hiding (appendFile)
 
@@ -24,16 +22,14 @@ import qualified System.Directory as D
 
 import System.Directory.Extras (getDirectoryContents)
 import System.FilePath.Extras (isDotfile)
+import System.Posix.Files.Extras (isDirectory, isSymbolicLink)
 
 -- TODO: Delete this. Dirent replaces DirectoryTree.
-type DirectoryTree = Directory
+type DirectoryTree = (FilePath, [Dirent])
 
-data Dirent = DirentDir Directory
-            | DirentFile File
+data Dirent = DirentDir (FilePath, [Dirent]) -- Path, plus children
+            | DirentFile FilePath
             deriving Show
-
-type Directory = (FilePath, [Dirent])
-type File      = FilePath
 
 -- | Build a Maybe Dirent from the specified FilePath. Returns Nothing if the specified file should be ignored. A file
 -- should be ignored if:
@@ -44,7 +40,7 @@ type File      = FilePath
 -- DirentFile.
 makeDirent :: FilePath -> Bool -> IO (Maybe Dirent)
 makeDirent path include_dotfiles = do
-    ifM (isDirectory <$> getFileStatus path)
+    ifM (isDirectory path)
         (Just <$> makeDirentDirectory)
         makeDirentFile
   where
@@ -56,16 +52,22 @@ makeDirent path include_dotfiles = do
         catMaybes <$> (getDirectoryContents path >>= mapM (flip makeDirent include_dotfiles))
 
     makeDirentFile :: IO (Maybe Dirent)
-    makeDirentFile =
-        if include_dotfiles && isDotfile path
-            then return Nothing
-            else return $ Just (DirentFile path)
+    makeDirentFile = do
+        is_symlink <- isSymbolicLink path
+        return $
+            if is_symlink || (include_dotfiles && isDotfile path)
+                then Nothing
+                else Just (DirentFile path)
+
+-- | Transform a Dirent into a [Dirent], representing the entries at depth n from the provided dirent. Passing a
+-- DirentFile into this function will result in []. A depth of zero means "this" level of depth.
+direntsAtDepth :: Int -> Dirent -> [Dirent]
+direntsAtDepth _ d@(DirentFile _)          = []
+direntsAtDepth 0 dirent                    = [dirent]
+direntsAtDepth n (DirentDir (_, children)) = concatMap (direntsAtDepth (n-1)) children
 
 filterSymlinks :: [FilePath] -> IO [FilePath]
-filterSymlinks = filterM $ fmap not . isSymbolicLink'
-
-isSymbolicLink' :: FilePath -> IO Bool
-isSymbolicLink' = fmap isSymbolicLink . getSymbolicLinkStatus
+filterSymlinks = filterM $ fmap not . isSymbolicLink
 
 -- | Build a DirectoryTree from the specified directory, excluding ".", "..", and symlinks from each directory.
 -- Optionally include dotfiles.
@@ -75,11 +77,11 @@ makeTree file_path include_dotfiles = foldM step begin contents
   where
     step :: DirectoryTree -> FilePath -> IO DirectoryTree
     step tree path =
-        ifM (isDirectory <$> getFileStatus path)
+        ifM (isDirectory path)
             (appendDir tree path)
             (return $ appendChild tree $ DirentFile path)
 
-    appendDir :: Directory -> FilePath -> IO Directory
+    appendDir :: DirectoryTree -> FilePath -> IO DirectoryTree
     appendDir dir path = do
         child <- makeTree path include_dotfiles
         return $ appendChild dir (DirentDir child)
@@ -113,12 +115,9 @@ getDirectoryContents' file_path include_dotfiles = lift contents >>= each
     possiblyFilterDotfiles xs = let f = if include_dotfiles then id else filter (not . isPrefixOf ".") in f xs
 
     filterSymlinks :: [FilePath] -> IO [FilePath]
-    filterSymlinks = filterM $ fmap not . isSymbolicLink'
+    filterSymlinks = filterM $ fmap not . isSymbolicLink
 
-    isSymbolicLink' :: FilePath -> IO Bool
-    isSymbolicLink' = fmap isSymbolicLink . getSymbolicLinkStatus
-
-appendChild :: Directory -> Dirent -> Directory
+appendChild :: DirectoryTree -> Dirent -> DirectoryTree
 appendChild (fp, xs) t = (fp, t:xs)
 
 -- | Transform a DirectoryTree into a [DirectoryTree], representing the trees at depth n from the root tree. A depth of

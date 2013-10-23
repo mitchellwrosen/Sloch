@@ -1,7 +1,6 @@
 {- Command line interface for Sloch. Exports a datatype consisting of all command line options/arguments, and a function
  - to retrieve it in IO.
  - -}
-
 module Cli
     ( Cli(..)
     , OptGit
@@ -39,9 +38,9 @@ parseCli' :: ParserInfo Cli
 parseCli' = info (helper <*> cli) infoMod
   where
     cli :: Parser Cli
-    cli = Cli <$> depth 
-              <*> includeDotfiles 
-              <*> git 
+    cli = Cli <$> depth
+              <*> includeDotfiles
+              <*> git
               <*> verbose
               <*> dir
 

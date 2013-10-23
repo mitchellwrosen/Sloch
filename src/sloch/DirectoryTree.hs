@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, TupleSections #-}
 
 module DirectoryTree
     ( Directory
@@ -8,20 +8,22 @@ module DirectoryTree
     , treesAtDepth
     ) where
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>), pure)
 import Control.Monad (filterM)
 import Control.Monad.Extras (ifM)
 import Data.List (isPrefixOf)
 import Data.Maybe (catMaybes)
 import Pipes
 import System.FilePath ((</>))
-import System.FilePath.Extras (isDotfile)
 import System.Posix.Files (getFileStatus, getSymbolicLinkStatus, isDirectory, isSymbolicLink)
 
 import Prelude hiding (appendFile)
 
 import qualified Pipes.Prelude as P
 import qualified System.Directory as D
+
+import System.Directory.Extras (getDirectoryContents)
+import System.FilePath.Extras (isDotfile)
 
 -- TODO: Delete this. Dirent replaces DirectoryTree.
 type DirectoryTree = Directory
@@ -47,22 +49,17 @@ makeDirent path include_dotfiles = do
         makeDirentFile
   where
     makeDirentDirectory :: IO Dirent
-    makeDirentDirectory = do
-        contents <- map (path </>) . possiblyFilterDotfiles .
-                            filter (`notElem` [".",".."]) <$> D.getDirectoryContents path
-        contents' <- mapM (flip makeDirent include_dotfiles) contents
-        let contents'' = catMaybes contents'
-        return $ DirentDir (path, contents'')
+    makeDirentDirectory = DirentDir . (path, ) <$> makeDirentsFromChildren
+
+    makeDirentsFromChildren :: IO [Dirent]
+    makeDirentsFromChildren =
+        catMaybes <$> (getDirectoryContents path >>= mapM (flip makeDirent include_dotfiles))
 
     makeDirentFile :: IO (Maybe Dirent)
     makeDirentFile =
         if include_dotfiles && isDotfile path
             then return Nothing
             else return $ Just (DirentFile path)
-
-    possiblyFilterDotfiles :: [FilePath] -> [FilePath]
-    possiblyFilterDotfiles =
-        (\paths -> if include_dotfiles then paths else filter (not . isPrefixOf ".") paths)
 
 filterSymlinks :: [FilePath] -> IO [FilePath]
 filterSymlinks = filterM $ fmap not . isSymbolicLink'
@@ -91,15 +88,15 @@ makeTree file_path include_dotfiles = foldM step begin contents
     begin = return (file_path, [])
 
     contents :: Producer FilePath IO ()
-    contents = getDirectoryContents file_path include_dotfiles
+    contents = getDirectoryContents' file_path include_dotfiles
 
 -- | Like Pipes.Prelude.foldM, but no explicit end step (simply return).
 foldM :: Monad m => (b -> a -> m b) -> m b -> Producer a m () -> m b
 foldM step begin = P.foldM step begin return
 
 -- | Enumerate the specified directory, excluding ".", "..", and symlinks. Optionally include dotfiles.
-getDirectoryContents :: FilePath -> Bool -> Producer' FilePath IO ()
-getDirectoryContents file_path include_dotfiles = lift contents >>= each
+getDirectoryContents' :: FilePath -> Bool -> Producer' FilePath IO ()
+getDirectoryContents' file_path include_dotfiles = lift contents >>= each
   where
     -- This order is important. Filter "." and ".." before prepending the directory name, which is necessary before
     -- checking if the file is a symlink (need entire path, of course).

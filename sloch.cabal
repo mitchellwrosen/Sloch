@@ -14,8 +14,12 @@ cabal-version:       >=1.8
 executable sloch
   main-is:        Main.hs
   hs-source-dirs: src/sloch
-  ghc-options: -Wall -Werror -O2
-  other-modules:
+  ghc-options: -Wall -O2
+  other-modules: Control.Monad.Extras
+               , Data.Map.Extras
+               , Sloch.Show
+               , Sloch.Types
+               , System.FilePath.Extras
   build-depends: base                 >= 4
                , pipes                >= 4.0
                , pipes-bytestring     >= 1.0.1

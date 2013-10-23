@@ -12,6 +12,7 @@ import Control.Applicative ((<$>))
 import Control.Monad (filterM)
 import Control.Monad.Extras (ifM)
 import Data.List (isPrefixOf)
+import Data.Maybe (catMaybes)
 import Pipes
 import System.FilePath ((</>))
 import System.FilePath.Extras (isDotfile)
@@ -37,26 +38,27 @@ type File      = FilePath
 --      - it's a symlink
 --      - it's a dotfile, and @ignore_dotfiles@ is True.
 --      - the file cannot be opened or does not exist.
--- Otherwise, return a Just DirentDir (recursively create Dirents from each entry, ignoring "." and "..") or a Just 
+-- Otherwise, return a Just DirentDir (recursively create Dirents from each entry, ignoring "." and "..") or a Just
 -- DirentFile.
 makeDirent :: FilePath -> Bool -> IO (Maybe Dirent)
 makeDirent path include_dotfiles = do
     ifM (isDirectory <$> getFileStatus path)
-        makeDirentDirectory
+        (Just <$> makeDirentDirectory)
         makeDirentFile
   where
-    makeDirentDirectory :: IO [Dirent]
+    makeDirentDirectory :: IO Dirent
     makeDirentDirectory = do
         contents <- map (path </>) . possiblyFilterDotfiles .
                             filter (`notElem` [".",".."]) <$> D.getDirectoryContents path
         contents' <- mapM (flip makeDirent include_dotfiles) contents
-        return $ DirentDir (path, contents')
+        let contents'' = catMaybes contents'
+        return $ DirentDir (path, contents'')
 
     makeDirentFile :: IO (Maybe Dirent)
     makeDirentFile =
         if include_dotfiles && isDotfile path
-            then return DirentIgnored
-            else return $ DirentFile path
+            then return Nothing
+            else return $ Just (DirentFile path)
 
     possiblyFilterDotfiles :: [FilePath] -> [FilePath]
     possiblyFilterDotfiles =

@@ -23,12 +23,12 @@ import Pipes.Lift (execStateP)
 import qualified Data.Map as M
 
 import Cli (OptVerbose)
+import Control.Monad.Extras (whenMaybe)
+import Data.Map.Extras (adjustWithDefault)
 import DirectoryTree (Dirent(..), DirectoryTree, makeTree, treesAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
-
--- A simple summary of the source-lines-of-code count, by language.
-type Sloch = Map Language [(FilePath, Int)]
+import Sloch.Types (Sloch, SlochHierarchy)
 
 showSloch :: OptVerbose -> Sloch -> String
 showSloch verbose = unlines . map display . sortBy compareSloc . M.toList
@@ -48,10 +48,6 @@ showSloch verbose = unlines . map display . sortBy compareSloc . M.toList
 
 sumSnds :: Num b => [(a,b)] -> b
 sumSnds = foldr ((+) . snd) 0
-
--- A summary of the source-lines-of-code count, represented as two maps: the outer, a directory name to counts, and the
--- inner, a map from language type to number of lines.
-type SlochHierarchy = Map FilePath Sloch
 
 showSlochHierarchy :: OptVerbose -> SlochHierarchy -> String
 showSlochHierarchy verbose = unlines . concatMap display . sort . M.toList
@@ -99,10 +95,3 @@ sloch = forever $ do
     whenMaybe (language file_path) $ \lang -> do
         n <- liftIO $ countLines file_path lang
         lift $ modify $ adjustWithDefault ((file_path, n):) lang [(file_path, n)]
-
--- | Like when, but conditional on a Maybe being Just rather than a Bool being True.
-whenMaybe :: Monad m => Maybe a -> (a -> m ()) -> m ()
-whenMaybe = flip $ maybe $ return ()
-
-adjustWithDefault :: Ord k => (a -> a) -> k -> a -> Map k a -> Map k a
-adjustWithDefault f k a m = if M.member k m then M.adjust f k m else M.insert k a m

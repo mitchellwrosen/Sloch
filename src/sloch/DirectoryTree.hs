@@ -22,16 +22,23 @@ import Prelude hiding (appendFile)
 import qualified Pipes.Prelude as P
 import qualified System.Directory as D
 
+-- TODO: Delete this. Dirent replaces DirectoryTree.
 type DirectoryTree = Directory
-type Directory = (FilePath, [Dirent])
-type File      = FilePath
 
 data Dirent = DirentDir Directory
             | DirentFile File
             deriving Show
 
--- | Build a Dirent structure from the specified FilePath, which may be a file or directory. Ignores symlinks, ".",
--- "..", and optionally include dotfiles.
+type Directory = (FilePath, [Dirent])
+type File      = FilePath
+
+-- | Build a Maybe Dirent from the specified FilePath. Returns Nothing if the specified file should be ignored. A file
+-- should be ignored if:
+--      - it's a symlink
+--      - it's a dotfile, and @ignore_dotfiles@ is True.
+--      - the file cannot be opened or does not exist.
+-- Otherwise, return a Just DirentDir (recursively create Dirents from each entry, ignoring "." and "..") or a Just 
+-- DirentFile.
 makeDirent :: FilePath -> Bool -> IO (Maybe Dirent)
 makeDirent path include_dotfiles = do
     ifM (isDirectory <$> getFileStatus path)
@@ -50,10 +57,6 @@ makeDirent path include_dotfiles = do
         if include_dotfiles && isDotfile path
             then return DirentIgnored
             else return $ DirentFile path
-    {-filteredAbsolutePaths :: IO [FilePath]-}
-    {-filteredAbsolutePaths =-}
-        {-map (file_path </>) . possiblyFilterDotfiles . filter (`notElem` [".",".."]) <$>-}
-            {-D.getDirectoryContents file_path-}
 
     possiblyFilterDotfiles :: [FilePath] -> [FilePath]
     possiblyFilterDotfiles =
@@ -67,6 +70,7 @@ isSymbolicLink' = fmap isSymbolicLink . getSymbolicLinkStatus
 
 -- | Build a DirectoryTree from the specified directory, excluding ".", "..", and symlinks from each directory.
 -- Optionally include dotfiles.
+-- TODO: Delete this function. makeDirent replaces it.
 makeTree :: FilePath -> Bool -> IO DirectoryTree
 makeTree file_path include_dotfiles = foldM step begin contents
   where

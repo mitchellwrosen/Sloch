@@ -6,6 +6,7 @@ module Language
     , language
     ) where
 
+import Control.Applicative ((<*>), pure)
 import Data.Char (toLower)
 import Data.List (isInfixOf, isPrefixOf)
 import System.FilePath.Posix (takeExtension)
@@ -29,7 +30,7 @@ data Language = Abap
 
 isLineComment :: Language -> String -> Bool
 isLineComment Abap         = isPrefixOf "*"
-isLineComment ActionScript = isPrefixOf "//"
+isLineComment ActionScript = or . ([isPrefixOf "//", isPrefixOf "////"] <*>) . pure
 isLineComment Ada          = isPrefixOf "--"
 isLineComment C            = isPrefixOf "//"
 isLineComment Cpp          = isPrefixOf "//"

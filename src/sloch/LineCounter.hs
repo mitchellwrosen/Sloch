@@ -1,7 +1,8 @@
-{-# LANGUAGE TemplateHaskell, RankNTypes #-}
+{-# LANGUAGE TemplateHaskell, RankNTypes, ScopedTypeVariables #-}
 
 module LineCounter (countLines) where
 
+import Control.Exception (catch)
 import Control.Monad (forever, unless)
 import Control.Monad.Trans.State.Strict (StateT)
 import Control.Lens ((^.), (.=), (%=), makeLenses, use)
@@ -30,17 +31,20 @@ initLineCount = LineCount
 makeLenses ''LineCount
 
 countLines :: FilePath -> Language -> IO Int
-countLines file_path lang = do
-    line_count <-
-        runSafeT $
-            runEffect $
-                execStateP initLineCount $
-                    readFile file_path                  >->
-                    P.map trim                          >->
-                    P.filter (not . null)               >->
-                    P.filter (not . isLineComment lang) >->
-                    hoist (hoist lift) (countLinesConsumer lang)
-    return $ line_count ^. lineCount
+countLines file_path lang = countLines' `catch` (\(e :: IOError) -> print e >> return 0)
+  where
+    countLines' :: IO Int
+    countLines' = do
+        line_count <-
+            runSafeT $
+                runEffect $
+                    execStateP initLineCount $
+                        readFile file_path                  >->
+                        P.map trim                          >->
+                        P.filter (not . null)               >->
+                        P.filter (not . isLineComment lang) >->
+                        hoist (hoist lift) (countLinesConsumer lang)
+        return $ line_count ^. lineCount
 
 countLinesConsumer :: Language -> Consumer' String (StateT LineCount IO) ()
 countLinesConsumer lang = forever $ await >>= count lang

@@ -9,13 +9,11 @@ module Sloch
     , slochFiles
     ) where
 
-import Control.Applicative ((<$>))
 import Control.Monad (forever, unless)
 import Control.Monad.Morph (hoist)
 import Control.Monad.Trans (lift, liftIO)
 import Control.Monad.Trans.State.Strict (StateT, modify)
 import Data.List (sort, sortBy)
-import Data.Map (Map)
 import Data.Monoid ((<>))
 import Pipes (Consumer', Effect, Pipe, Producer', (>->), await, each, runEffect, yield)
 import Pipes.Lift (execStateP)
@@ -25,7 +23,7 @@ import qualified Data.Map as M
 import Cli (OptVerbose)
 import Control.Monad.Extras (whenMaybe)
 import Data.Map.Extras (adjustWithDefault)
-import DirectoryTree (Dirent(..), DirectoryTree, makeTree, treesAtDepth)
+import DirectoryTree (Dirent(..), makeDirent, direntsAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
 import Sloch.Types (Sloch, SlochHierarchy)
@@ -57,25 +55,29 @@ showSlochHierarchy verbose = unlines . concatMap display . sort . M.toList
 
 slochHierarchy :: FilePath -> Int -> Bool -> IO SlochHierarchy
 slochHierarchy path depth include_dotfiles = do
-    trees <- treesAtDepth depth <$> makeTree path include_dotfiles
-    execStateEffect M.empty $
-        hoist lift (each trees) >-> slochHierarchy'
+    makeDirent path include_dotfiles >>= \case
+        Nothing     -> return M.empty
+        Just dirent -> do
+            let trees = direntsAtDepth depth dirent
+            execStateEffect M.empty $
+                hoist lift (each trees) >-> slochHierarchy'
 
 execStateEffect :: Monad m => s -> Effect (StateT s m) () -> m s
 execStateEffect init_state effect = runEffect $ execStateP init_state $ effect
 
--- | "Outer" lines count, which builds up a mapping from directory name -> inner lines count. Only adds an entry if
--- there were any lines counted.
-slochHierarchy' :: Consumer' DirectoryTree (StateT SlochHierarchy IO) ()
+-- | "Outer" lines count, which builds up a mapping from dirent -> inner lines count. Only adds an entry if there were
+-- any lines counted.
+slochHierarchy' :: Consumer' Dirent (StateT SlochHierarchy IO) ()
 slochHierarchy' = forever $ do
-    (path, children) <- await
-    lang_to_count_map <-
-        liftIO $
-            execStateEffect M.empty $
-                hoist lift (each children) >-> direntToFilePath >-> sloch
-
-    lift $ unless (M.null lang_to_count_map) $
-        modify $ M.insert path lang_to_count_map
+    await >>= \case
+        DirentDir (path, children) -> foo path (hoist lift (each children) >-> direntToFilePath >-> sloch)
+        DirentFile path            -> foo path (yield path >-> sloch)
+  where
+    foo :: FilePath -> Effect (StateT Sloch IO) () -> Consumer' Dirent (StateT SlochHierarchy IO) ()
+    foo path effect = do
+        lang_to_count_map <- liftIO $ execStateEffect M.empty $ effect
+        lift $ unless (M.null lang_to_count_map) $
+            modify $ M.insert path lang_to_count_map
 
 direntToFilePath :: Monad m => Pipe Dirent FilePath m ()
 direntToFilePath = forever $

@@ -1,99 +1,70 @@
 {-# LANGUAGE LambdaCase, RankNTypes #-}
 
 module Sloch
-    ( Sloch
-    , showSloch
-    , showSlochHierarchy
-    , SlochHierarchy
-    , slochHierarchy
-    , slochFiles
+    ( LangToSloc
+    , PathToLangToSloc
+    , sloch
+    , slochDirents
+    , summarize
+    , summarize'
     ) where
 
-import Control.Monad (forever, unless)
-import Control.Monad.Morph (hoist)
-import Control.Monad.Trans (lift, liftIO)
-import Control.Monad.Trans.State.Strict (StateT, modify)
-import Data.List (sort, sortBy)
-import Data.Monoid ((<>))
-import Pipes (Consumer', Effect, Pipe, Producer', (>->), await, each, runEffect, yield)
-import Pipes.Lift (execStateP)
+import Data.Map (Map)
+import Data.Maybe (catMaybes)
 
 import qualified Data.Map as M
 
-import Cli (OptVerbose)
-import Control.Monad.Extras (whenMaybe)
 import Data.Map.Extras (adjustWithDefault)
 import DirectoryTree (Dirent(..), makeDirent, direntsAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
-import Sloch.Types (Sloch, SlochHierarchy)
 
-showSloch :: OptVerbose -> Sloch -> String
-showSloch verbose = unlines . map display . sortBy compareSloc . M.toList
-  where
-    compareSloc :: (Language, [(FilePath, Int)]) -> (Language, [(FilePath, Int)]) -> Ordering
-    compareSloc (lang1, fs1) (lang2, fs2) = (sumSnds fs2) `compare` (sumSnds fs1) <> lang1 `compare` lang2
+data SlochDirent = SlochDirentFile FilePath Language Int
+                 | SlochDirentDir FilePath [SlochDirent]
+                 deriving Show
 
-    display :: (Language, [(FilePath, Int)]) -> String
-    display (lang, fs) = unlines $
-        show lang : lineCounts
-      where
-        lineCounts :: [String]
-        lineCounts =
-            if verbose
-                then map (\(fp,n) -> "      " ++ show n ++ " " ++ fp) (sortBy (\a b -> snd b `compare` snd a) fs)
-                else ["      " ++ show (sumSnds fs)]
+type PathToLangToSloc = Map FilePath LangToSloc
+type LangToSloc       = Map Language [(FilePath, Int)]
 
-sumSnds :: Num b => [(a,b)] -> b
-sumSnds = foldr ((+) . snd) 0
-
-showSlochHierarchy :: OptVerbose -> SlochHierarchy -> String
-showSlochHierarchy verbose = unlines . concatMap display . sort . M.toList
-  where
-    display :: (FilePath, Sloch) -> [String]
-    display (path, s) = path : map ("   " ++) (lines $ showSloch verbose s)
-
-slochHierarchy :: FilePath -> Int -> Bool -> IO SlochHierarchy
-slochHierarchy path depth include_dotfiles = do
+sloch :: Int -> Bool -> FilePath -> IO PathToLangToSloc
+sloch depth include_dotfiles path =
     makeDirent path include_dotfiles >>= \case
-        Nothing     -> return M.empty
+        Nothing -> return M.empty
         Just dirent -> do
-            let trees = direntsAtDepth depth dirent
-            execStateEffect M.empty $
-                hoist lift (each trees) >-> slochHierarchy'
+            let dirents = direntsAtDepth depth dirent
+            slochDirents dirents >>= return . summarize
 
-execStateEffect :: Monad m => s -> Effect (StateT s m) () -> m s
-execStateEffect init_state effect = runEffect $ execStateP init_state $ effect
+slochDirents :: [Dirent] -> IO [SlochDirent]
+slochDirents = fmap catMaybes . mapM slochDirent
 
--- | "Outer" lines count, which builds up a mapping from dirent -> inner lines count. Only adds an entry if there were
--- any lines counted.
-slochHierarchy' :: Consumer' Dirent (StateT SlochHierarchy IO) ()
-slochHierarchy' = forever $ do
-    await >>= \case
-        DirentDir (path, children) -> foo path (hoist lift (each children) >-> direntToFilePath >-> sloch)
-        DirentFile path            -> foo path (yield path >-> sloch)
+-- | Transform an ordinary Dirent into a SlochDirent, which is essentially the
+-- same dirent, but annotated with line count information. Returns Nothing if
+-- no lines could be counted, i.e. the file has an unknown file extension.
+-- Directories work as expected, recursively.
+slochDirent :: Dirent -> IO (Maybe SlochDirent)
+slochDirent (DirentFile path) =
+    case language path of
+        Nothing   -> return Nothing
+        Just lang -> countLines path lang >>= return . Just . SlochDirentFile path lang
+slochDirent (DirentDir path children) =
+    fmap catMaybes (mapM slochDirent children) >>= return . Just . SlochDirentDir path
+
+-- | Summarize a list of SlochDirents, where each element is summarized and put
+-- into a summary map. Each element is therefore the context with which the
+-- children (if they exist) shall be inserted into the map with.
+summarize :: [SlochDirent] -> PathToLangToSloc
+summarize = foldr step M.empty
   where
-    foo :: FilePath -> Effect (StateT Sloch IO) () -> Consumer' Dirent (StateT SlochHierarchy IO) ()
-    foo path effect = do
-        lang_to_count_map <- liftIO $ execStateEffect M.empty $ effect
-        lift $ unless (M.null lang_to_count_map) $
-            modify $ M.insert path lang_to_count_map
+    step :: SlochDirent -> PathToLangToSloc -> PathToLangToSloc
+    step (SlochDirentFile path lang count) = M.insert path $ M.singleton lang [(path, count)]
+    step (SlochDirentDir path children)    = M.insert path $ summarize' children
 
-direntToFilePath :: Monad m => Pipe Dirent FilePath m ()
-direntToFilePath = forever $
-    await >>=
-        \case
-            (DirentDir (_, children)) -> each children >-> direntToFilePath
-            (DirentFile path)         -> yield path
-
--- Source-lines-of-code from a Producer input.
-slochFiles :: Producer' FilePath IO () -> IO Sloch
-slochFiles files = execStateEffect M.empty $ hoist lift files >-> sloch
-
--- Generic source-lines-of-code counter that consumes FilePaths in the Sloch state monad.
-sloch :: Consumer' FilePath (StateT Sloch IO) ()
-sloch = forever $ do
-    file_path <- await
-    whenMaybe (language file_path) $ \lang -> do
-        n <- liftIO $ countLines file_path lang
-        lift $ modify $ adjustWithDefault ((file_path, n):) lang [(file_path, n)]
+-- | Similar to summarize, but flattens a list of dirents into a single
+-- LangToSloc map. No context (or "root" dirent) is associated with any of the
+-- dirents in the list - they are all simply folded up uniformly.
+summarize' :: [SlochDirent] -> LangToSloc
+summarize' = foldr step M.empty
+  where
+    step :: SlochDirent -> LangToSloc -> LangToSloc
+    step (SlochDirentFile path lang count) = adjustWithDefault (x:) lang [x] where x = (path,count)
+    step (SlochDirentDir _ children)       = M.unionWith (++) $ summarize' children

@@ -19,7 +19,9 @@ executable sloch
                , Data.Map.Extras
                , Sloch.Show
                , Sloch.Types
+               , System.Directory.Extras
                , System.FilePath.Extras
+               , System.Posix.Files.Extras
   build-depends: base                 >= 4
                , pipes                >= 4.0
                , pipes-bytestring     >= 1.0.1

@@ -1,38 +1,38 @@
 module Sloch.Show
-    ( showSloch
-    , showSlochHierarchy
+    ( showLangToSloc
+    , showPathToLangToSloc
     ) where
 
-
-import Text.PrettyPrint
 import Data.List (sort, sortBy)
-import Data.Monoid (mappend)
+import Data.Monoid ((<>))
 
 import qualified Data.Map as M
 
+import Cli (OptVerbose)
 import Language (Language)
-import Sloch.Types (Sloch, SlochHierarchy)
+import Sloch (LangToSloc, PathToLangToSloc)
 
-showSloch :: Sloch -> String
-showSloch = render . slochDoc
+showLangToSloc :: OptVerbose -> LangToSloc -> String
+showLangToSloc verbose = unlines . map display . sortBy compareSloc . M.toList
   where
-    slochDoc :: Sloch -> Doc
-    slochDoc = slochDoc' . sortBy compareSloc . M.toList
+    compareSloc :: (Language, [(FilePath, Int)]) -> (Language, [(FilePath, Int)]) -> Ordering
+    compareSloc (lang1, fs1) (lang2, fs2) = sumSnds fs2 `compare` sumSnds fs1 <> lang1 `compare` lang2
+
+    display :: (Language, [(FilePath, Int)]) -> String
+    display (lang, fs) = unlines $
+        show lang : lineCounts
       where
-        compareSloc :: (Language, Int) -> (Language, Int) -> Ordering
-        compareSloc (lang1, n1) (lang2, n2) = (n2 `compare` n1) `mappend` (lang1 `compare` lang2)
+        lineCounts :: [String]
+        lineCounts =
+            if verbose
+                then map (\(fp,n) -> "      " ++ show n ++ " " ++ fp) (sortBy (\a b -> snd b `compare` snd a) fs)
+                else ["      " ++ show (sumSnds fs)]
 
-        slochDoc' :: [(Language, Int)] -> Doc
-        slochDoc' xs = (vcat . map row) xs
-          where
-            row :: (Language, Int) -> Doc
-            row (lang, n) = sizedText width (show lang) <+> int n
+sumSnds :: Num b => [(a,b)] -> b
+sumSnds = foldr ((+) . snd) 0
 
-            width :: Int
-            width = 10 + foldr (\s n -> max (length . show . fst $ s) n) 0 xs
-
-showSlochHierarchy :: SlochHierarchy -> String
-showSlochHierarchy = unlines . concatMap display . sort . M.toList
+showPathToLangToSloc :: OptVerbose -> PathToLangToSloc -> String
+showPathToLangToSloc verbose = unlines . concatMap display . sort . M.toList
   where
-    display :: (FilePath, Sloch) -> [String]
-    display (path, s) = path : map ("   " ++) (lines $ showSloch s)
+    display :: (FilePath, LangToSloc) -> [String]
+    display (path, s) = path : map ("   " ++) (lines $ showLangToSloc verbose s)

@@ -1,10 +1,13 @@
 module Main where
 
-import Pipes (each)
 import System.Process (readProcess)
 
+import qualified Data.Map as M
+
 import Cli (Cli(..), OptVerbose, parseCli)
-import Sloch (showSloch, showSlochHierarchy, slochFiles, slochHierarchy)
+import DirectoryTree (makeDirents)
+import Sloch (PathToLangToSloc, sloch, slochDirents, summarize')
+import Sloch.Show (showLangToSloc, showPathToLangToSloc)
 
 main :: IO ()
 main = parseCli >>= main'
@@ -20,11 +23,16 @@ main' cli = do
     if git
         then gitSloch verbose
         else do
-            s <- slochHierarchy dir depth include_dotfiles
-            putStr $ showSlochHierarchy verbose s
+            s <- sloch depth include_dotfiles dir
+            putStrLn $ showPathToLangToSloc verbose s
 
 gitSloch :: OptVerbose -> IO ()
-gitSloch verbose = do
-    files <- readProcess "git" ["ls-files"] ""
-    s <- slochFiles $ each (lines files)
-    putStr $ showSloch verbose s
+gitSloch verbose =
+    readProcess "git" ["ls-files"] "" >>= \files ->
+    makeDirents (lines files) True >>=
+    slochDirents >>=
+    putStr . showLangToSloc verbose . summarize'
+
+slochFiles :: [FilePath] -> Bool -> IO PathToLangToSloc
+slochFiles paths include_dotfiles = fmap M.unions $
+    mapM (sloch 0 include_dotfiles) paths

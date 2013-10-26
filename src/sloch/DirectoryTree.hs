@@ -2,30 +2,25 @@
 
 module DirectoryTree
     ( Dirent(..)
-    , makeDirent
     , direntsAtDepth
+    , makeDirent
+    , makeDirents
     ) where
 
-import Control.Applicative ((<$>), (<*>), pure)
-import Control.Monad (filterM)
+import Control.Applicative ((<$>))
 import Control.Monad.Extras (ifM)
-import Data.List (isPrefixOf)
 import Data.Maybe (catMaybes)
-import Pipes
-import System.FilePath ((</>))
-
-import Prelude hiding (appendFile)
-
-import qualified Pipes.Prelude as P
-import qualified System.Directory as D
 
 import System.Directory.Extras (getDirectoryContents)
 import System.FilePath.Extras (isDotfile)
 import System.Posix.Files.Extras (isDirectory, isSymbolicLink)
 
-data Dirent = DirentDir (FilePath, [Dirent]) -- Path, plus children
+data Dirent = DirentDir FilePath [Dirent]
             | DirentFile FilePath
             deriving Show
+
+makeDirents :: [FilePath] -> Bool -> IO [Dirent]
+makeDirents paths include_dotfiles = fmap catMaybes $ mapM (\p -> makeDirent p include_dotfiles) paths
 
 -- | Build a Maybe Dirent from the specified FilePath. Returns Nothing if the specified file should be ignored. A file
 -- should be ignored if:
@@ -35,29 +30,28 @@ data Dirent = DirentDir (FilePath, [Dirent]) -- Path, plus children
 -- Otherwise, return a Just DirentDir (recursively create Dirents from each entry, ignoring "." and "..") or a Just
 -- DirentFile.
 makeDirent :: FilePath -> Bool -> IO (Maybe Dirent)
-makeDirent path include_dotfiles = do
-    ifM (isDirectory path)
-        (Just <$> makeDirentDirectory)
-        makeDirentFile
+makeDirent path include_dotfiles
+    | not include_dotfiles && isDotfile path = return Nothing
+    | otherwise = ifM (isSymbolicLink path)
+                      (return Nothing)
+                      (fmap Just makeDirent')
   where
-    makeDirentDirectory :: IO Dirent
-    makeDirentDirectory = DirentDir . (path, ) <$> makeDirentsFromChildren
+    makeDirent' :: IO Dirent
+    makeDirent' =
+        ifM (isDirectory path)
+            makeDirentDirectory
+            (return $ DirentFile path)
+      where
+        makeDirentDirectory :: IO Dirent
+        makeDirentDirectory = DirentDir path <$> makeDirentsFromChildren
 
-    makeDirentsFromChildren :: IO [Dirent]
-    makeDirentsFromChildren =
-        catMaybes <$> (getDirectoryContents path >>= mapM (flip makeDirent include_dotfiles))
-
-    makeDirentFile :: IO (Maybe Dirent)
-    makeDirentFile = do
-        is_symlink <- isSymbolicLink path
-        return $
-            if is_symlink || (include_dotfiles && isDotfile path)
-                then Nothing
-                else Just (DirentFile path)
+        makeDirentsFromChildren :: IO [Dirent]
+        makeDirentsFromChildren =
+            catMaybes <$> (getDirectoryContents path >>= mapM (`makeDirent` include_dotfiles))
 
 -- | Transform a Dirent into a [Dirent], representing the entries at depth n from the provided dirent. Passing a
 -- DirentFile into this function will result in []. A depth of zero means "this" level of depth.
 direntsAtDepth :: Int -> Dirent -> [Dirent]
 direntsAtDepth 0 d                         = [d]
 direntsAtDepth _ d@(DirentFile _)          = [d]
-direntsAtDepth n (DirentDir (_, children)) = concatMap (direntsAtDepth (n-1)) children
+direntsAtDepth n (DirentDir _ children) = concatMap (direntsAtDepth (n-1)) children

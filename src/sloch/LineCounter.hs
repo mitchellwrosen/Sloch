@@ -3,7 +3,7 @@
 module LineCounter (countLines) where
 
 import Control.Exception (catch)
-import Control.Monad (forever, unless)
+import Control.Monad (forever)
 import Control.Monad.Trans.State.Strict (StateT)
 import Control.Lens ((^.), (.=), (%=), makeLenses, use)
 import Data.Char (isSpace)
@@ -15,6 +15,7 @@ import Prelude hiding (readFile, map)
 
 import qualified Pipes.Prelude as P
 
+import Control.Monad.Extras (unlessM)
 import Language
 
 data LineCount = LineCount
@@ -40,7 +41,7 @@ countLines file_path lang = countLines' `catch` (\(e :: IOError) -> print e >> r
                 runEffect $
                     execStateP initLineCount $
                         readFile file_path                  >->
-                        P.map trim                          >->
+                        P.map trimL                         >->
                         P.filter (not . null)               >->
                         P.filter (not . isLineComment lang) >->
                         hoist (hoist lift) (countLinesConsumer lang)
@@ -57,8 +58,5 @@ count lang line
     | isBeginBlockComment lang line = inComment .= True
     | otherwise = unlessM (use inComment) $ lineCount %= (+1)
 
-trim :: String -> String
-trim = dropWhile isSpace
-
-unlessM :: Monad m => m Bool -> m () -> m ()
-unlessM mb action = mb >>= flip unless action
+trimL :: String -> String
+trimL = dropWhile isSpace

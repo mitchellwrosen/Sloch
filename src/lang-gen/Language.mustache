@@ -8,11 +8,14 @@ module Language
     , language
     ) where
 
+import Control.Applicative ((<*>), pure)
 import Data.Char (toLower)
 import Data.List (isInfixOf, isPrefixOf)
 import System.FilePath.Posix (takeExtension)
 
-data Language = {{langAdt}} deriving (Eq, Ord, Show)
+data Language = 
+   {{langAdt}} 
+   deriving (Eq, Ord, Show)
 
 isLineComment :: Language -> String -> Bool
 {{lineComments}}
@@ -27,5 +30,5 @@ language :: FilePath -> Maybe Language
 language = language' . map toLower . takeExtension
   where
     language' :: String -> Maybe Language
-    {{languageExts}}
+{{languageExts}}
     language' _         = Nothing

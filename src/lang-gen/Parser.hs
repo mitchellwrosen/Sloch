@@ -1,30 +1,53 @@
 module Parser (parseLanguagesFile) where
 
-import Control.Applicative ((<$>), (<$), (<*>), (<*), (<|>), liftA2)
-import Text.Parsec (Parsec, ParseError, eof, many, parse, string, try, upper)
+import Control.Applicative ((<$>), (<$), (<*>), (*>), (<*), (<|>), liftA2)
+import Control.Monad (void)
+import Text.Parsec
+    ( Parsec
+    , ParseError
+    , char
+    , eof
+    , many
+    , newline
+    , parse
+    , sepBy1
+    , space
+    , spaces
+    , string
+    , try
+    , upper
+    )
 
-import Language
+import LanguageGen
 import Text.Parsec.Char.Extras (csv, notSpaces, token, word)
 
 type Parser = Parsec String ()
 
-parseLanguagesFile :: FilePath -> IO (Either ParseError [Language])
+parseLanguagesFile :: FilePath -> IO (Either ParseError [LanguageGen])
 parseLanguagesFile = fmap (parse languages "") . readFile
 
-languages :: Parser [Language]
-languages = many language <* eof
+languages :: Parser [LanguageGen]
+languages = many (language <* spaces) <* eof
 
-language :: Parser Language
-language = token $ Language <$> name <*> exts <*> comment <*> comment <*> comment
+language :: Parser LanguageGen
+language = LanguageGen <$>
+    (name    <* newline) <*>
+    (exts    <* newline) <*>
+    (comment <* newline) <*>
+    (comment <* newline) <*>
+    comment
 
 name :: Parser String
-name = token $ liftA2 (:) upper word
+name = liftA2 (:) upper word
 
 exts :: Parser [String]
-exts = token $ csv word
+exts = threeSpaces *> word `sepBy1` (char ' ')
 
 comment :: Parser [String]
-comment = token $ noComment <|> yesComment
+comment = threeSpaces *> (noComment <|> yesComment)
   where
     noComment  = [] <$ try (string "none")
-    yesComment = csv notSpaces
+    yesComment = notSpaces `sepBy1` (char ' ')
+
+threeSpaces :: Parser ()
+threeSpaces = void $ space >> space >> space

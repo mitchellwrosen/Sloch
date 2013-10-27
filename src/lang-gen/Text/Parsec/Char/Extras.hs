@@ -2,9 +2,9 @@
 
 module Text.Parsec.Char.Extras where
 
-import Control.Applicative ((<*))
+import Control.Applicative ((*>), (<*))
 import Data.Char (isSpace)
-import Text.Parsec (ParsecT, Stream, char, letter, many, sepBy1, satisfy, spaces)
+import Text.Parsec (ParsecT, Stream, between, char, letter, many, sepBy1, satisfy, spaces)
 
 csv :: Stream s m Char => ParsecT s u m a -> ParsecT s u m [a]
 csv = (`sepBy1` comma)
@@ -22,4 +22,4 @@ word :: Stream s m Char => ParsecT s u m String
 word = many letter
 
 token :: Stream s m Char => ParsecT s u m a -> ParsecT s u m a
-token = (<* spaces)
+token = between spaces spaces

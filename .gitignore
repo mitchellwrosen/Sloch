@@ -1,3 +1,6 @@
 *.hi
 *.o
 dist/
+
+# Auto-generated
+src/sloch/Language.hs

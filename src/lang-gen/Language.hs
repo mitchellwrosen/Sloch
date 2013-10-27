@@ -3,7 +3,7 @@ module Language where
 import Data.List (intersperse)
 
 data Language = Language
-    { langName               :: String
+    { langName               :: !String
     , langExts               :: [String]
     , langLineComments       :: [String]
     , langBeginBlockComments :: [String]

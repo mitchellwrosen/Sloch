@@ -1,10 +1,10 @@
-module Parser where
+module Parser (parseLanguagesFile) where
 
-import Control.Applicative
-import Text.Parsec hiding ((<|>), many)
+import Control.Applicative ((<$>), (<$), (<*>), (<*), (<|>), liftA2)
+import Text.Parsec (Parsec, ParseError, eof, many, parse, string, try, upper)
 
-{-import Language (Language(..))-}
 import Language
+import Text.Parsec.Char.Extras (csv, notSpaces, token, word)
 
 type Parser = Parsec String ()
 
@@ -15,18 +15,16 @@ languages :: Parser [Language]
 languages = many language <* eof
 
 language :: Parser Language
-language = spacesAfter $ Language <$> name <*> exts <*> comments <*> comments <*> comments
+language = token $ Language <$> name <*> exts <*> comment <*> comment <*> comment
 
 name :: Parser String
-name = spacesAfter $ liftA2 (:) upper (many letter)
+name = token $ liftA2 (:) upper word
 
 exts :: Parser [String]
-exts = spacesAfter $ sepBy1 (many letter) (char ',')
+exts = token $ csv word
 
-comments :: Parser [String]
-comments = spacesAfter $
-    [] <$ try (string "none") <|>
-    sepBy1 (many (noneOf " \t\r\n")) (char ',')
-
-spacesAfter :: Parser a -> Parser a
-spacesAfter p = p <* spaces
+comment :: Parser [String]
+comment = token $ noComment <|> yesComment
+  where
+    noComment  = [] <$ try (string "none")
+    yesComment = csv notSpaces

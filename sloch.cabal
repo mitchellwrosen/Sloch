@@ -1,5 +1,5 @@
 name:                sloch
-version:             0.1.0
+version:             0.2.0
 synopsis:            Source-lines-of-code counter
 
 homepage:            http://github.com/mitchellwrosen/Sloch

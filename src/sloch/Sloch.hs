@@ -15,7 +15,7 @@ import Data.Maybe (catMaybes)
 import qualified Data.Map as M
 
 import Data.Map.Extras (adjustWithDefault)
-import DirectoryTree (Dirent(..), makeDirent, direntsAtDepth)
+import Dirent (Dirent(..), makeDirent, direntsAtDepth)
 import Language (Language, language)
 import LineCounter (countLines)
 

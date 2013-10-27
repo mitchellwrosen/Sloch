@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes, TupleSections #-}
 
-module DirectoryTree
+module Dirent
     ( Dirent(..)
     , direntsAtDepth
     , makeDirent

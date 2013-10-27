@@ -5,7 +5,7 @@ import System.Process (readProcess)
 import qualified Data.Map as M
 
 import Cli (Cli(..), OptVerbose, parseCli)
-import DirectoryTree (makeDirents)
+import Dirent (makeDirents)
 import Sloch (PathToLangToSloc, sloch, slochDirents, summarize')
 import Sloch.Show (showLangToSloc, showPathToLangToSloc)
 

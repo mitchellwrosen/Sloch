@@ -2,5 +2,7 @@
 *.o
 dist/
 
+src/lang-gen/Main
+
 # Auto-generated
 src/sloch/Language.hs

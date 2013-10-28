@@ -18,7 +18,6 @@ executable sloch
   other-modules: Control.Monad.Extras
                , Data.Map.Extras
                , Sloch.Show
-               , Sloch.Types
                , System.Directory.Extras
                , System.FilePath.Extras
                , System.Posix.Files.Extras

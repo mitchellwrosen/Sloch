@@ -28,9 +28,9 @@ main' cli = do
 
 gitSloch :: OptVerbose -> IO ()
 gitSloch verbose =
-    readProcess "git" ["ls-files"] "" >>= \files ->
-    makeDirents (lines files) True >>=
-    slochDirents >>=
+    readProcess "git" ["ls-files"] "" >>=
+    makeDirents True . lines          >>=
+    slochDirents                      >>=
     putStr . showLangToSloc verbose . summarize'
 
 slochFiles :: [FilePath] -> Bool -> IO PathToLangToSloc

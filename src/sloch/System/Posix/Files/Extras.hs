@@ -7,3 +7,6 @@ isSymbolicLink = fmap F.isSymbolicLink . F.getSymbolicLinkStatus
 
 isDirectory :: FilePath -> IO Bool
 isDirectory = fmap F.isDirectory . F.getFileStatus
+
+hasReadPermission :: FilePath -> IO Bool
+hasReadPermission path = F.fileAccess path True False False

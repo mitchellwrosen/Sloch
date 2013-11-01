@@ -28,7 +28,7 @@ type LangToSloc       = Map Language [(FilePath, Int)]
 
 sloch :: Int -> Bool -> FilePath -> IO PathToLangToSloc
 sloch depth include_dotfiles path =
-    makeDirent path include_dotfiles >>= \case
+    makeDirent include_dotfiles path >>= \case
         Nothing -> return M.empty
         Just dirent -> do
             let dirents = direntsAtDepth depth dirent

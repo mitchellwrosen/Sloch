@@ -4,5 +4,8 @@ dist/
 
 src/lang-gen/Main
 
+# No read permission, just ignore it
+test/sloch/DirentTest/no-read-permission
+
 # Auto-generated
 src/sloch/Language.hs

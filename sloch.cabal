@@ -36,3 +36,37 @@ executable sloch
                , pretty               >= 1.1
                , mmorph               >= 1.0
                , mtl                  >= 2.1
+
+library
+  ghc-options: -Wall
+  exposed-modules: Test.Tasty.Hspec
+  build-depends: base                 >= 4
+               , tasty
+               , hspec
+
+test-suite test
+   type: exitcode-stdio-1.0
+   main-is: TestMain.hs
+   hs-source-dirs: src/sloch test/sloch
+   ghc-options: -Wall
+   build-depends: base                 >= 4
+                , pipes                >= 4.0
+                , pipes-bytestring     >= 1.0.1
+                , process              >= 1.1
+                , containers           >= 0.5
+                , filepath             >= 1.3
+                , unix                 >= 2.6
+                , directory            >= 1.2
+                , transformers         >= 0.3
+                , lens                 >= 3.9
+                , optparse-applicative >= 0.5
+                , pipes-safe           >= 2.0
+                , pretty               >= 1.1
+                , mmorph               >= 1.0
+                , mtl                  >= 2.1
+                , sloch
+                , tasty
+                , hspec
+                -- Remove after Test.Tasty.Hspec lands
+
+

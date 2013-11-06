@@ -4,10 +4,11 @@ import System.Process (readProcess)
 
 import qualified Data.Map as M
 
-import Cli (Cli(..), OptVerbose, parseCli)
-import Dirent (makeDirents)
-import Sloch (PathToLangToSloc, sloch, slochDirents, summarize')
-import Sloch.Show (showLangToSloc, showPathToLangToSloc)
+import Cli          (Cli(..), OptVerbose, parseCli)
+import Dirent       (makeDirents)
+import Sloch        (PathToLangToSloc, sloch, summarize')
+import Sloch.Dirent (slochDirents)
+import Sloch.Show   (showLangToSloc, showPathToLangToSloc)
 
 main :: IO ()
 main = parseCli >>= main'

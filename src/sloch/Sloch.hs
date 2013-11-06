@@ -4,24 +4,18 @@ module Sloch
     ( LangToSloc
     , PathToLangToSloc
     , sloch
-    , slochDirents
     , summarize
     , summarize'
     ) where
 
 import Data.Map (Map)
-import Data.Maybe (catMaybes)
 
 import qualified Data.Map as M
 
 import Data.Map.Extras (adjustWithDefault)
-import Dirent (Dirent(..), makeDirent, direntsAtDepth)
-import Language (Language, language)
-import LineCounter (countLines)
-
-data SlochDirent = SlochDirentFile FilePath Language Int
-                 | SlochDirentDir FilePath [SlochDirent]
-                 deriving Show
+import Dirent          (makeDirent, direntsAtDepth)
+import Language        (Language)
+import Sloch.Dirent    (SlochDirent(..), slochDirents)
 
 type PathToLangToSloc = Map FilePath LangToSloc
 type LangToSloc       = Map Language [(FilePath, Int)]
@@ -33,21 +27,6 @@ sloch depth include_dotfiles path =
         Just dirent -> do
             let dirents = direntsAtDepth depth dirent
             slochDirents dirents >>= return . summarize
-
-slochDirents :: [Dirent] -> IO [SlochDirent]
-slochDirents = fmap catMaybes . mapM slochDirent
-
--- | Transform an ordinary Dirent into a SlochDirent, which is essentially the
--- same dirent, but annotated with line count information. Returns Nothing if
--- no lines could be counted, i.e. the file has an unknown file extension.
--- Directories work as expected, recursively.
-slochDirent :: Dirent -> IO (Maybe SlochDirent)
-slochDirent (DirentFile path) =
-    case language path of
-        Nothing   -> return Nothing
-        Just lang -> countLines path lang >>= return . Just . SlochDirentFile path lang
-slochDirent (DirentDir path children) =
-    fmap catMaybes (mapM slochDirent children) >>= return . Just . SlochDirentDir path
 
 -- | Summarize a list of SlochDirents, where each element is summarized and put
 -- into a summary map. Each element is therefore the context with which the

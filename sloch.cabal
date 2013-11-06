@@ -14,14 +14,20 @@ cabal-version:       >=1.8
 executable sloch
   main-is:        Main.hs
   hs-source-dirs: src/sloch
-  ghc-options: -Wall -O2
-  other-modules: Control.Monad.Extras
+  ghc-options: -Wall
+  other-modules: Cli
+               , Control.Monad.Extras
                , Data.Map.Extras
+               , Dirent
+               , Language
+               , LineCounter
+               , Sloch
                , Sloch.Show
+               , Sloch.Dirent
                , System.Directory.Extras
                , System.FilePath.Extras
                , System.Posix.Files.Extras
-  build-depends: base                 >= 4
+  build-depends: base                 >= 4 && < 5
                , pipes                >= 4.0
                , pipes-bytestring     >= 1.0.1
                , process              >= 1.1
@@ -36,20 +42,24 @@ executable sloch
                , pretty               >= 1.1
                , mmorph               >= 1.0
                , mtl                  >= 2.1
+  extensions: LambdaCase
 
-library
+executable lang-gen
+  main-is:        Main.hs
+  hs-source-dirs: src/lang-gen
   ghc-options: -Wall
-  exposed-modules: Test.Tasty.Hspec
-  build-depends: base                 >= 4
-               , tasty
-               , hspec
+  other-modules: Text.Parsec.Char.Extras
+  build-depends: base       >= 4
+               , bytestring >= 0.10
+               , hastache   >= 0.5
+               , parsec     >= 3.0
 
 test-suite test
    type: exitcode-stdio-1.0
    main-is: TestMain.hs
    hs-source-dirs: src/sloch test/sloch
    ghc-options: -Wall
-   build-depends: base                 >= 4
+   build-depends: base                 >= 4 && < 5
                 , pipes                >= 4.0
                 , pipes-bytestring     >= 1.0.1
                 , process              >= 1.1
@@ -64,9 +74,7 @@ test-suite test
                 , pretty               >= 1.1
                 , mmorph               >= 1.0
                 , mtl                  >= 2.1
-                , sloch
                 , tasty
+                , tasty-hspec
                 , hspec
                 -- Remove after Test.Tasty.Hspec lands
-
-

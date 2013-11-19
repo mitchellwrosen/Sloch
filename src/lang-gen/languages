@@ -1,6 +1,6 @@
 Abap
    abap
-   * ~
+   *
    none
    none
 
@@ -105,6 +105,12 @@ Shell
    #
    none
    none
+
+Sql
+   sql
+   # --
+   /*
+   */
 
 VimL
    vim

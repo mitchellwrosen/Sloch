@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, ScopedTypeVariables, TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Dirent
     ( Dirent(..)
@@ -31,12 +31,12 @@ makeDirent :: Bool -> FilePath -> IO (Maybe Dirent)
 makeDirent include_dotfiles path = catch makeDirent' (\(_ :: IOException) -> return Nothing)
   where
     makeDirent' :: IO (Maybe Dirent)
-    makeDirent' 
+    makeDirent'
         | not include_dotfiles && isDotfile path = return Nothing
         | otherwise = do
             is_symlink <- isSymbolicLink path
-            if is_symlink 
-                then return Nothing 
+            if is_symlink
+                then return Nothing
                 else do
                     can_read <- hasReadPermission path
                     if not can_read

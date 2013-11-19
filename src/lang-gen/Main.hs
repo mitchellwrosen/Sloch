@@ -2,21 +2,36 @@
 
 module Main where
 
-import Text.Hastache
-import Text.Hastache.Context
-
-import LanguageGen
-import Parser
-
 import qualified Data.ByteString.Lazy.Char8 as BS
+import           System.Environment    ( getArgs )
+import           Text.Hastache         ( MuType(..)
+                                       , MuConfig(..)
+                                       , defaultConfig
+                                       , emptyEscape
+                                       , hastacheFile
+                                       )
+import           Text.Hastache.Context ( mkStrContext )
+
+import           LanguageGen           ( LanguageGen(..)
+                                       , makeAdt
+                                       , makeBeginBlockComments
+                                       , makeEndBlockComments
+                                       , makeLanguages
+                                       , makeLineComments
+                                       )
+import           Parser                ( parseLanguagesFile )
 
 main :: IO ()
-main = parseLanguagesFile "languages" >>= \case
-    Left err    -> error $ "parse error " ++ (show err)
-    Right langs -> foo langs
+main = do
+    [dir] <- getArgs
 
-foo langs = do
-    res <- hastacheFile config "Language.mustache" (mkStrContext context)
+    parseLanguagesFile (dir ++ "languages") >>= \case
+        Left err    -> error $ "parse error " ++ (show err)
+        Right langs -> main' dir langs
+
+main' :: FilePath -> [LanguageGen] -> IO ()
+main' dir langs = do
+    res <- hastacheFile config (dir ++ "Language.mustache") (mkStrContext context)
     BS.putStrLn res
   where
     config = defaultConfig { muEscapeFunc = emptyEscape }

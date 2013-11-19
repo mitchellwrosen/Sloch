@@ -27,13 +27,13 @@ spec = do
             dirent `shouldBe` Nothing
 
         it "ignores symlinks" $ do
-            dirent <- makeDirent False "test/sloch/DirentTest/symlink" 
+            dirent <- makeDirent False "test/sloch/DirentTest/symlink"
             dirent `shouldBe` Nothing
 
         it "returns Nothing when the file cannot be opened" $ do
             dirent <- makeDirent False "test/sloch/DirentTest/no-read-permission"
             dirent `shouldBe` Nothing
-        
+
         it "ignores . and .. entries of a directory" $ do
             let path = "test/sloch/DirentTest/empty-directory"
             dirent <- makeDirent False path

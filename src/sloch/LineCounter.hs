@@ -32,7 +32,7 @@ initLineCount = LineCount
 makeLenses ''LineCount
 
 countLines :: FilePath -> Language -> IO Int
-countLines file_path lang = countLines' `catch` (\(e :: IOError) -> print e >> return 0)
+countLines path lang = countLines' `catch` (\(e :: IOError) -> print e >> return 0)
   where
     countLines' :: IO Int
     countLines' = do
@@ -40,15 +40,15 @@ countLines file_path lang = countLines' `catch` (\(e :: IOError) -> print e >> r
             runSafeT $
                 runEffect $
                     execStateP initLineCount $
-                        readFile file_path                  >->
-                        P.map trimL                         >->
+                        readFile path                       >->
+                        P.map trimLeft                      >->
                         P.filter (not . null)               >->
                         P.filter (not . isLineComment lang) >->
-                        hoist (hoist lift) (countLinesConsumer lang)
+                        hoist (hoist lift) countLinesConsumer
         return $ line_count ^. lineCount
 
-countLinesConsumer :: Language -> Consumer' String (StateT LineCount IO) ()
-countLinesConsumer lang = forever $ await >>= count lang
+    countLinesConsumer :: Consumer' String (StateT LineCount IO) ()
+    countLinesConsumer = forever $ await >>= count lang
 
 count :: Language -> String -> Consumer' String (StateT LineCount IO) ()
 count lang line
@@ -58,5 +58,5 @@ count lang line
     | isBeginBlockComment lang line = inComment .= True
     | otherwise = unlessM (use inComment) $ lineCount %= (+1)
 
-trimL :: String -> String
-trimL = dropWhile isSpace
+trimLeft :: String -> String
+trimLeft = dropWhile isSpace

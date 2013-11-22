@@ -9,9 +9,10 @@ module Cli
     , parseCli
     ) where
 
+import Import
 import Options.Applicative
     ( InfoMod, Parser, ParserInfo
-    , (<>), (<$>), (<*>), argument, customExecParser, failureCode, help, helper, info, long, metavar, option, prefs
+    , argument, customExecParser, failureCode, help, helper, info, long, metavar, option, prefs
     , short, showDefault, showHelpOnError, str, switch, value
     )
 import Options.Applicative.Types (ParserPrefs) -- Options.Applicative, y u no export this?
@@ -35,47 +36,43 @@ parseCli = customExecParser pprefs parseCli'
     pprefs = prefs showHelpOnError
 
 parseCli' :: ParserInfo Cli
-parseCli' = info (helper <*> cli) infoMod
+parseCli' = info (helper ⊛ cli) infoMod
   where
     cli :: Parser Cli
-    cli = Cli <$> depth
-              <*> includeDotfiles
-              <*> git
-              <*> verbose
-              <*> dir
+    cli = pure Cli ⊛ depth ⊛ includeDotfiles ⊛ git ⊛ verbose ⊛ dir
 
     depth :: Parser Int
     depth = option $
         value   0
-     <> short   'd'
-     <> long    "depth"
-     <> help    "Set the depth under DIR to summarize the counts at."
-     <> metavar "DEPTH"
-     <> showDefault
+      ⊕ short   'd'
+      ⊕ long    "depth"
+      ⊕ help    "Set the depth under DIR to summarize the counts at."
+      ⊕ metavar "DEPTH"
+      ⊕ showDefault
 
     includeDotfiles :: Parser OptIncludeDotfiles
     includeDotfiles = switch $
         long "include-dotfiles"
-     <> help "Include dotfiles"
+      ⊕ help "Include dotfiles"
 
     git :: Parser OptGit
     git = switch $
         short 'g'
-     <> long  "git"
-     <> help  "Sloc this Git repository (ignores DIR). May be used anywhere inside the repository."
+      ⊕ long  "git"
+      ⊕ help  "Sloc this Git repository (ignores DIR). May be used anywhere inside the repository."
 
     verbose :: Parser OptVerbose
     verbose = switch $
         short 'v'
-     <> long "verbose"
-     <> help "Print output verbosely."
+      ⊕ long "verbose"
+      ⊕ help "Print output verbosely."
 
     dir :: Parser FilePath
     dir = argument str $
         value   "."
-     <> metavar "DIR"
-     <> help    "Directory to sloc. Ignored if --git is provided."
-     <> showDefault
+      ⊕ metavar "DIR"
+      ⊕ help    "Directory to sloc. Ignored if --git is provided."
+      ⊕ showDefault
 
     infoMod :: InfoMod Cli
     infoMod = failureCode (-1)

@@ -14,7 +14,7 @@ cabal-version:       >=1.8
 executable sloch
   main-is:        Main.hs
   hs-source-dirs: src/sloch
-  ghc-options: -Wall
+  ghc-options: -Wall -O3 -threaded -rtsopts -with-rtsopts=-N
   other-modules: Cli
                , Control.Monad.Extras
                , Data.Map.Extras
@@ -27,21 +27,22 @@ executable sloch
                , System.Directory.Extras
                , System.FilePath.Extras
                , System.Posix.Files.Extras
-  build-depends: base                 >= 4 && < 5
-               , pipes                >= 4.0
-               , pipes-bytestring     >= 1.0.1
-               , process              >= 1.1
-               , containers           >= 0.5
-               , filepath             >= 1.3
-               , unix                 >= 2.6
-               , directory            >= 1.2
-               , transformers         >= 0.3
-               , lens                 >= 3.9
-               , optparse-applicative >= 0.5
-               , pipes-safe           >= 2.0
-               , pretty               >= 1.1
-               , mmorph               >= 1.0
-               , mtl                  >= 2.1
+  build-depends: async                >=2 && <3
+               , base                 >=4 && < 5
+               , pipes                >=4.0
+               , pipes-bytestring     >=1.0.1
+               , process              >=1.1
+               , containers           >=0.5
+               , filepath             >=1.3
+               , unix                 >=2.6
+               , directory            >=1.2
+               , transformers         >=0.3
+               , lens                 >=3.9
+               , optparse-applicative >=0.5
+               , pipes-safe           >=2.0
+               , pretty               >=1.1
+               , mmorph               >=1.0
+               , mtl                  >=2.1
   extensions: LambdaCase
 
 executable lang-gen

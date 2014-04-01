@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Main where
 
 import System.Process (readProcess)
@@ -14,18 +16,9 @@ main :: IO ()
 main = parseCli >>= main'
 
 main' :: Cli -> IO ()
-main' cli = do
-    let depth            = cliDepth cli
-        include_dotfiles = cliIncludeDotfiles cli
-        git              = cliGit cli
-        verbose          = cliVerbose cli
-        dir              = cliDir cli
-
-    if git
-        then gitSloch verbose
-        else do
-            s <- sloch depth include_dotfiles dir
-            putStrLn $ showPathToLangToSloc verbose s
+main' Cli{..}
+    | cliGit    = gitSloch cliVerbose
+    | otherwise = sloch cliDepth cliIncludeDotfiles cliDir >>= putStrLn . showPathToLangToSloc cliVerbose
 
 gitSloch :: OptVerbose -> IO ()
 gitSloch verbose =
